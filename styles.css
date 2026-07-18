@@ -75,7 +75,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .header-phone::before{content:"";display:inline-block;width:.375rem;height:.375rem;border-radius:999px;background:var(--accent);}
 .header-phone:hover{color:var(--accent);}
 .header-cta .btn-accent{padding:.6rem 1rem;font-size:.875rem;}
-.header-cta-compact{display:none;padding:.55rem .9rem;font-size:.85rem;}
+.header-cta-compact{display:none;margin-left:auto;padding:.55rem .9rem;font-size:.85rem;}
 .menu-toggle{display:grid;place-items:center;border:1px solid var(--border);border-radius:.4rem;padding:.5rem;color:var(--primary);background:transparent;cursor:pointer;}
 .mobile-nav{display:none;border-top:1px solid var(--border);background:#fff;}
 .mobile-nav.open{display:block;}
