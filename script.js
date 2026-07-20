@@ -1,31 +1,26 @@
 // Data
-const PHONE_DISPLAY = "(903) 555-0100";
-const PHONE_HREF = "tel:+19035550100";
+const PHONE_DISPLAY = "+234 901 683 6967";
+const PHONE_HREF = "tel:+2349016836967";
 
 const services = [
-  { icon: "waves", title: "Sewer Repair", desc: "Trenchless-friendly sewer line diagnosis, repair and replacement done right the first time." },
-  { icon: "droplets", title: "Drain Cleaning", desc: "Fast, thorough drain clearing for kitchens, baths, and main lines — no mess left behind." },
-  { icon: "search", title: "Leak Detection", desc: "Non-invasive leak location using acoustic and thermal tools to pinpoint hidden water loss." },
-  { icon: "wrench", title: "Leak Repair", desc: "Permanent fixes for slab, wall, and fixture leaks — sealed, tested, and warrantied." },
-  { icon: "hammer", title: "Pipe Repair", desc: "Copper, PEX and PVC repair and re-piping with clean, code-compliant workmanship." },
-  { icon: "home", title: "Toilet Installation", desc: "Efficient, quiet, comfort-height toilets professionally set with a lasting seal." },
-  { icon: "wrench", title: "Toilet Repair", desc: "Running, leaking, or clogged? We diagnose and repair every make and model." },
-  { icon: "shower-head", title: "Shower Installation", desc: "Full shower systems, valves and pans installed to spec — no callbacks." },
-  { icon: "shower-head", title: "Shower Repair", desc: "Valve replacements, pan repairs and pressure fixes with clean, tidy work." },
-  { icon: "flame", title: "Water Heater Installation", desc: "Tank & tankless installation sized for your home, permitted and pressure-tested." },
-  { icon: "flame", title: "Water Heater Repair", desc: "Same-day diagnosis on pilots, elements, thermostats and leaks." },
-  { icon: "container", title: "Water Tank Installation", desc: "Well pressure tanks and storage tanks installed with the right fittings and controls." },
-  { icon: "container", title: "Water Tank Repair", desc: "Bladder, fitting and pressure switch service to keep your water supply steady." },
-  { icon: "hammer", title: "New Construction Plumbing", desc: "Ground-up rough-ins and finish work for builders and remodelers. On time, on plan." },
+  { icon: "wrench", title: "General Plumbing", desc: "Dependable plumbing installation, repair and upkeep for homes and businesses — done right the first time." },
+  { icon: "waves", title: "Pipe Installation", desc: "Durable pipe installation and replacement using quality materials and clean, code-compliant workmanship." },
+  { icon: "search", title: "Leak Detection & Repair", desc: "Fast, accurate leak detection and permanent repairs — protecting your walls, floors and foundation from hidden damage." },
+  { icon: "bath", title: "Bathroom & Kitchen Plumbing", desc: "Complete bathroom and kitchen plumbing — sinks, taps, showers and fittings installed to a clean, lasting finish." },
+  { icon: "flame", title: "Water Heater Installation", desc: "Professional water heater installation and servicing, sized correctly and fitted for safe, reliable hot water." },
+  { icon: "droplets", title: "Drain Cleaning", desc: "Thorough drain cleaning and unclogging for kitchens, bathrooms and mainlines — fast, with no mess left behind." },
+  { icon: "home", title: "Toilet Installation & Repair", desc: "Efficient toilet installation and repair — running, leaking or blocked toilets fixed properly with a lasting seal." },
+  { icon: "siren", title: "Emergency Plumbing", desc: "24/7 emergency response for burst pipes, flooding and sudden leaks — we answer the call and get there fast." },
+  { icon: "settings", title: "Maintenance Services", desc: "Scheduled plumbing maintenance to catch small issues early — keeping pipes and fixtures running smoothly year-round." },
 ];
 
 const whyItems = [
-  { t: "Professional service", d: "Uniformed technicians, drop cloths down, boots off — treated like your home, not a job site." },
-  { t: "Clear communication", d: "Upfront quotes, honest recommendations, and a phone number that a real person answers." },
-  { t: "Fair pricing", d: "Flat-rate pricing on most repairs so you know the cost before we start. No surprise invoices." },
-  { t: "Reliable workmanship", d: "Every job is pressure-tested, code-compliant, and backed by a written workmanship warranty." },
-  { t: "Fast response", d: "Same-day emergency response across Kemp and the Cedar Creek Lake area, 24 hours a day." },
-  { t: "Customer satisfaction", d: "We're not done until you're happy — that's why our neighbors keep sending us their friends." },
+  { t: "Professional & courteous", d: "Trained technicians who respect your home or business — clean work, proper tools, no shortcuts." },
+  { t: "Clear communication", d: "Honest explanations and upfront pricing before any work begins — no jargon, no surprises." },
+  { t: "Fair, transparent pricing", d: "Straightforward quotes agreed before we start, so you always know the cost — no inflated invoices." },
+  { t: "Reliable workmanship", d: "Every job is tested and finished to a high standard, backed by our commitment to lasting quality." },
+  { t: "Fast response", d: "We show up when we say we will, with rapid dispatch for emergencies — day or night." },
+  { t: "Customer satisfaction", d: "Your satisfaction is the job — we're not finished until the work is done right and you're happy." },
 ];
 
 const gallery = [
@@ -36,13 +31,13 @@ const gallery = [
 ];
 
 const reviews = [
-  { name: "Sarah M.", city: "Kemp, TX", stars: 5, text: "Came out the same evening for a burst pipe. Clean, professional, fair price. They saved our floors." },
-  { name: "David R.", city: "Mabank, TX", stars: 5, text: "Installed a new tankless water heater in one day. Explained everything, cleaned up better than they found it." },
-  { name: "Jennifer P.", city: "Gun Barrel City, TX", stars: 5, text: "Finally a plumber that shows up when they say they will. Diagnosed a slab leak two others missed." },
-  { name: "Marcus T.", city: "Seven Points, TX", stars: 5, text: "Fair quote, no upsells, quality work. Roughed in the plumbing for our new build without a hitch." },
+  { name: "Chidinma A.", city: "Homeowner", stars: 5, text: "Called them for a burst pipe emergency and they arrived within the hour. Professional, honest, and the work has held up perfectly." },
+  { name: "Emeka O.", city: "Business Owner", stars: 5, text: "N.D. Flow handled the plumbing for our new office fit-out. On schedule, tidy work, and they explained every step clearly." },
+  { name: "Ifeoma B.", city: "Estate Resident", stars: 5, text: "Finally a plumbing company that turns up on time and does the job right the first time. Highly recommend." },
+  { name: "Tunde K.", city: "Property Manager", stars: 5, text: "We use them for maintenance across several properties. Reliable, fair pricing, and always reachable when something urgent comes up." },
 ];
 
-const areas = ["Kemp","Mabank","Gun Barrel City","Seven Points","Athens","Malakoff","Eustace","Cedar Creek Lake","Tool","Payne Springs"];
+const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship"];
 
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconTag = (name, cls="icon") => `<i data-lucide="${name}" class="${cls}"></i>`;
@@ -90,9 +85,9 @@ document.getElementById("reviews-grid").innerHTML = reviews.map(r => `
   </figure>
 `).join("");
 
-// Areas
+// Who we serve
 document.getElementById("areas-list").innerHTML = areas.map(a => `
-  <li>${iconTag("map-pin","icon-sm")} ${escape(a)}, TX</li>
+  <li>${iconTag("check","icon-sm")} ${escape(a)}</li>
 `).join("");
 
 // Mobile menu
