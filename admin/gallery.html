@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gallery — N.D. Flow Admin</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="icon" href="../assets/logo-mark.png" type="image/png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="admin.css" />
+</head>
+<body class="admin-body">
+
+<div class="auth-loading"><span class="spinner"></span> Loading…</div>
+
+<div class="admin-shell">
+  <aside class="admin-sidebar" id="admin-sidebar">
+    <div class="admin-sidebar-brand">
+      <img src="../assets/logo-mark.png" alt="" />
+      <span>N.D. Flow<span class="dot">.</span><small>ADMIN</small></span>
+    </div>
+    <nav class="admin-nav">
+      <a href="dashboard.html" class="admin-nav-link"><i data-lucide="layout-dashboard" class="icon-sm"></i> Overview</a>
+      <a href="gallery.html" class="admin-nav-link active"><i data-lucide="image" class="icon-sm"></i> Gallery</a>
+      <span class="admin-nav-link disabled"><i data-lucide="wrench" class="icon-sm"></i> Services <em>Soon</em></span>
+      <span class="admin-nav-link disabled"><i data-lucide="star" class="icon-sm"></i> Testimonials <em>Soon</em></span>
+      <span class="admin-nav-link disabled"><i data-lucide="newspaper" class="icon-sm"></i> Blog <em>Soon</em></span>
+      <span class="admin-nav-link disabled"><i data-lucide="mail" class="icon-sm"></i> Messages <em>Soon</em></span>
+    </nav>
+    <div class="admin-sidebar-footer">
+      <a href="../index.html" class="admin-nav-link" target="_blank" rel="noopener"><i data-lucide="external-link" class="icon-sm"></i> View live site</a>
+    </div>
+  </aside>
+
+  <div class="admin-main">
+    <header class="admin-topbar">
+      <button id="sidebar-toggle" class="icon-btn" aria-label="Open menu"><i data-lucide="menu" class="icon"></i></button>
+      <h1>Gallery</h1>
+      <div class="admin-topbar-right">
+        <span id="admin-email" class="admin-user-email"></span>
+        <button id="logout-btn" class="btn-ghost-dark"><i data-lucide="log-out" class="icon-sm"></i> Log out</button>
+      </div>
+    </header>
+
+    <main class="admin-content">
+      <section class="admin-panel gallery-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Project photos</h2>
+            <p class="panel-sub">Shown on the public website gallery, newest first. Changes appear on the live site automatically — no redeploy needed.</p>
+          </div>
+          <label class="btn-accent upload-label">
+            <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple hidden />
+            <i data-lucide="upload" class="icon-sm"></i> Upload photos
+          </label>
+        </div>
+
+        <div id="upload-progress" class="upload-progress" hidden>
+          <div class="upload-progress-label" id="upload-progress-label"></div>
+          <div class="upload-progress-track"><div class="upload-progress-fill" id="upload-progress-fill"></div></div>
+        </div>
+
+        <div id="gallery-message" class="form-message" role="status" hidden></div>
+
+        <div id="gallery-grid-admin" class="gallery-grid-admin"></div>
+        <div id="gallery-empty" class="empty-state" hidden>
+          <i data-lucide="image" class="icon"></i>
+          <p>No photos yet. Tap "Upload photos" above to add your first one.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script type="module" src="js/gallery.js"></script>
+</body>
+</html>

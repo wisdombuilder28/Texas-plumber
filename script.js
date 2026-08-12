@@ -63,12 +63,17 @@ document.getElementById("why-list").innerHTML = whyItems.map(i => `
   </li>
 `).join("");
 
-// Gallery
-document.getElementById("gallery-grid").innerHTML = gallery.map((g,i) => `
-  <figure class="gallery-fig ${i===0?"large":"small"}">
-    <img src="${g.src}" alt="${escape(g.alt)}" loading="lazy" width="1200" height="900" />
-  </figure>
-`).join("");
+// Gallery — exposed on window.NDFlow so gallery-live.js can re-render this
+// same markup with live photos from Firestore, without duplicating the template.
+function renderGallery(items) {
+  document.getElementById("gallery-grid").innerHTML = items.map((g,i) => `
+    <figure class="gallery-fig ${i===0?"large":"small"}">
+      <img src="${escape(g.src)}" alt="${escape(g.alt)}" loading="lazy" width="1200" height="900" />
+    </figure>
+  `).join("");
+}
+renderGallery(gallery);
+window.NDFlow = { ...(window.NDFlow || {}), renderGallery };
 
 // Reviews
 document.getElementById("reviews-grid").innerHTML = reviews.map(r => `
