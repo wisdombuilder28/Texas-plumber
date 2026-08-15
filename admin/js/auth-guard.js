@@ -13,7 +13,7 @@ import {
 export function requireAuth(onSignedIn) {
   onAuthStateChanged(auth, (user) => {
     if (!user) {
-      window.location.replace("login.html");
+      window.location.replace("/admin/login.html");
       return;
     }
     document.body.classList.add("auth-ready");
@@ -29,7 +29,7 @@ export function wireLogout(buttonId) {
     btn.disabled = true;
     try {
       await signOut(auth);
-      window.location.replace("login.html");
+      window.location.replace("/admin/login.html");
     } catch (err) {
       console.error("Sign out failed:", err);
       btn.disabled = false;

@@ -13,7 +13,7 @@ const forgotBtn = document.getElementById("forgot-btn");
 
 // Already signed in? Skip straight to the dashboard.
 onAuthStateChanged(auth, (user) => {
-  if (user) window.location.replace("dashboard.html");
+  if (user) window.location.replace("/admin/dashboard.html");
 });
 
 function showMessage(text, kind) {
@@ -54,7 +54,7 @@ form.addEventListener("submit", async (e) => {
   setLoading(true);
   try {
     await signInWithEmailAndPassword(auth, email, password);
-    window.location.replace("dashboard.html");
+    window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("Sign-in failed:", err);
     showMessage(friendlyAuthError(err), "error");
