@@ -1,5 +1,5 @@
 // admin/js/gallery.js
-import { db, storage } from "../../firebase-config.js";
+import { db } from "../../firebase-config.js";
 import { requireAuth, wireLogout, wireSidebar } from "./auth-guard.js";
 import {
   collection,
@@ -9,15 +9,8 @@ import {
   addDoc,
   deleteDoc,
   doc,
-  getDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-storage.js";
 
 wireSidebar();
 wireLogout("logout-btn");
@@ -28,7 +21,13 @@ requireAuth((user) => {
   startGalleryListener();
 });
 
-const MAX_FILE_BYTES = 8 * 1024 * 1024; // must match storage.rules
+// Photos are stored as base64 image data directly inside each Firestore document --
+// no Firebase Storage, no billing account needed. Firestore caps a document at 1 MiB
+// total, so the encoded image has to stay comfortably under that. These numbers match
+// the check in firestore.rules, so anything rejected here would be rejected there too.
+const MAX_INPUT_BYTES = 20 * 1024 * 1024;               // sanity ceiling on what we'll even try to process
+const MAX_ENCODED_BYTES = 700 * 1024;                    // final base64 string budget
+const MAX_RAW_BYTES = Math.floor((MAX_ENCODED_BYTES * 3) / 4); // ~525KB of image bytes before base64 inflates it ~33%
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 const grid = document.getElementById("gallery-grid-admin");
@@ -88,7 +87,7 @@ function renderGrid(snapshot) {
       const d = docSnap.data();
       return `
       <figure class="gallery-admin-item">
-        <img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
+        <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
         <button type="button" class="btn-danger delete-btn" data-id="${docSnap.id}">
           <i data-lucide="trash-2" class="icon-sm"></i> Delete
         </button>
@@ -103,22 +102,13 @@ function renderGrid(snapshot) {
 }
 
 // ---------- Delete ----------
+// No Storage file to clean up anymore -- the photo lives inside the Firestore
+// document itself, so deleting the document deletes the photo. One call, done.
 async function deletePhoto(id, btn) {
   if (!window.confirm("Delete this photo? It will disappear from the public site immediately.")) return;
   btn.disabled = true;
   try {
-    const docRef = doc(db, "gallery", id);
-    const snap = await getDoc(docRef);
-    const data = snap.data();
-    if (data?.storagePath) {
-      try {
-        await deleteObject(ref(storage, data.storagePath));
-      } catch (storageErr) {
-        // File already gone from Storage for some reason — still remove the record.
-        console.warn("Storage file missing, removing record anyway:", storageErr);
-      }
-    }
-    await deleteDoc(docRef);
+    await deleteDoc(doc(db, "gallery", id));
     showMessage("Photo deleted.", "success");
   } catch (error) {
     console.error("Delete failed:", error);
@@ -127,80 +117,91 @@ async function deletePhoto(id, btn) {
   }
 }
 
-// ---------- Compression (shrinks typical phone photos before upload) ----------
-async function compressImage(file, { maxDimension = 2000, quality = 0.82 } = {}) {
-  if (file.size < 400 * 1024) return file; // already small, not worth touching
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+// ---------- Compression ----------
+// Iteratively re-encodes the photo, shrinking quality first, then dimensions, until
+// it fits MAX_RAW_BYTES. Real phone photos usually converge in 1-2 passes; the loop
+// is the safety net for the rare very-detailed image that doesn't compress easily.
+// Bounded at 8 attempts so this can never hang.
+async function compressToFit(file) {
+  const bitmap = await createImageBitmap(file);
+  let dimension = 1600;
+  let quality = 0.82;
+  let blob = null;
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (!blob || blob.size >= file.size) return file; // compression didn't help — keep original
-    const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-    return new File([blob], newName, { type: "image/jpeg" });
-  } catch (error) {
-    console.warn("Compression skipped, uploading original:", error);
-    return file;
+
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (blob && blob.size <= MAX_RAW_BYTES) return blob;
+
+    if (quality > 0.5) {
+      quality = Math.max(0.5, quality - 0.1);
+    } else if (dimension > 500) {
+      dimension = Math.max(500, Math.round(dimension * 0.8));
+      quality = 0.7;
+    }
   }
+  return blob; // best effort after 8 attempts
 }
 
-// ---------- Upload ----------
-function uploadOne(file, path, onProgress) {
+function blobToDataURL(blob) {
   return new Promise((resolve, reject) => {
-    const task = uploadBytesResumable(ref(storage, path), file, { contentType: file.type });
-    task.on(
-      "state_changed",
-      (snap) => onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-      reject,
-      () => resolve(task.snapshot)
-    );
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
   });
 }
 
+// ---------- Upload ----------
 async function handleFiles(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
   messageEl.hidden = true;
 
   for (let i = 0; i < files.length; i++) {
-    let file = files[i];
-    const label = `(${i + 1}/${files.length}) ${file.name}`;
+    const original = files[i];
+    const label = `(${i + 1}/${files.length}) ${original.name}`;
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      showMessage(`${file.name}: only JPG, PNG, or WebP images are allowed.`);
+    if (!ALLOWED_TYPES.includes(original.type)) {
+      showMessage(`${original.name}: only JPG, PNG, or WebP images are allowed.`);
       continue;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      showMessage(`${file.name}: that photo is too large (max 8MB).`);
+    if (original.size > MAX_INPUT_BYTES) {
+      showMessage(`${original.name}: that file is too large to process (max 20MB).`);
       continue;
     }
 
     try {
-      setProgress(`Preparing ${label}…`, 0);
-      file = await compressImage(file);
+      setProgress(`Compressing ${label}…`, 30);
+      const compressed = await compressToFit(original);
 
-      const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
-      const storagePath = `gallery/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+      if (!compressed || compressed.size > MAX_RAW_BYTES) {
+        showMessage(`${original.name}: too detailed to shrink small enough. Try a simpler photo or crop it first.`);
+        continue;
+      }
 
-      await uploadOne(file, storagePath, (pct) => setProgress(`Uploading ${label}`, pct));
+      setProgress(`Encoding ${label}…`, 65);
+      const dataUrl = await blobToDataURL(compressed);
 
-      const url = await getDownloadURL(ref(storage, storagePath));
+      setProgress(`Saving ${label}…`, 90);
       await addDoc(collection(db, "gallery"), {
-        url,
-        storagePath,
+        imageData: dataUrl,
         alt: "N.D. Flow Plumbing Co. completed project",
-        contentType: file.type,
-        size: file.size,
+        sizeBytes: compressed.size,
         order: Date.now(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      setProgress(`Saved ${label}`, 100);
     } catch (error) {
       console.error("Upload failed:", error);
-      showMessage(`${file.name}: upload failed. Check your connection and try again.`);
+      showMessage(`${original.name}: upload failed. Check your connection and try again.`);
     }
   }
 

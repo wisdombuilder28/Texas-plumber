@@ -21,7 +21,7 @@ try {
       const items = snapshot.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
-          src: data.url,
+          src: data.imageData,
           alt: data.alt || "N.D. Flow Plumbing Co. completed project",
         };
       });

@@ -1,8 +1,13 @@
 # Setup guide — do this once
 
-Three parts: Firebase (auth + gallery), then Analytics (GA4). About 30 minutes total.
+Two parts: Firebase (auth + gallery), then Analytics (GA4), optional. About 20 minutes for Part 1.
 Nothing here needs a computer or a terminal — every step is done in a browser, so it
 all works from your phone too.
+
+Everything in Part 1 runs on Firebase's free **Spark** plan. No billing account, no card,
+ever — gallery photos are stored as compressed image data directly inside Firestore
+documents instead of Firebase Storage, specifically to avoid the billing requirement
+Storage now has.
 
 ## Part 1 — Firebase project
 
@@ -37,19 +42,14 @@ There is no public sign-up page anywhere in this project, by design. This is the
 2. Document ID: paste the **User UID** from step 4.
 3. Add one field, e.g. `email` (string) = the admin's email → Save.
 
-Skipping this is the #1 way people get stuck: login succeeds, but every gallery upload/delete fails with a permissions error — every rule in this project (gallery, storage, and later the analytics endpoint) checks membership in this collection, not just "is logged in."
+Skipping this is the #1 way people get stuck: login succeeds, but every gallery upload/delete fails with a permissions error — every rule in this project (gallery, and later the analytics endpoint) checks membership in this collection, not just "is logged in."
 
-### 7. Turn on Storage
-1. Build → Storage → Get started → production mode.
-2. **Heads up:** Firebase now requires the pay-as-you-go **Blaze plan** to use Storage at all, even at zero cost — you'll be asked to add a billing method. A small gallery stays well inside the free monthly quota (5 GB stored, 1 GB/day downloaded), so this shouldn't cost anything, but a card on file is required.
-3. Rules tab → replace the contents with everything in `storage.rules` → Publish. (First time you publish rules using `firestore.exists()`, the console prompts you to enable a permission — click Enable.)
-
-### 8. Deploy and test
+### 7. Deploy and test
 Push these files to GitHub as usual — Vercel redeploys automatically. Then visit:
 
 `https://your-site.vercel.app/admin` (redirects to the login page)
 
-Sign in with the email/password from step 4. You should land on the Overview page, and "Gallery" in the sidebar should let you upload/view/delete photos immediately — that part works as soon as Part 1 above is done. The public gallery section on the homepage updates automatically the moment you upload or delete something, no redeploy needed.
+Sign in with the email/password from step 4. You should land on the Overview page, and "Gallery" in the sidebar should let you upload/view/delete photos immediately — that part works as soon as steps 1-6 above are done. The public gallery section on the homepage updates automatically the moment you upload or delete something, no redeploy needed.
 
 The stat cards on Overview will say "Not connected yet" until you finish Part 2 below — that's expected, not broken.
 
