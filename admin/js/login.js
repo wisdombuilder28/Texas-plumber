@@ -10,6 +10,20 @@ const form = document.getElementById("login-form");
 const messageEl = document.getElementById("login-message");
 const submitBtn = document.getElementById("login-submit");
 const forgotBtn = document.getElementById("forgot-btn");
+const passwordInput = document.getElementById("password-input");
+const passwordToggle = document.getElementById("password-toggle");
+
+if (window.lucide) lucide.createIcons();
+
+passwordToggle.addEventListener("click", () => {
+  const showing = passwordInput.type === "text";
+  passwordInput.type = showing ? "password" : "text";
+  passwordToggle.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+  passwordToggle.innerHTML = showing
+    ? '<i data-lucide="eye" class="icon-sm"></i>'
+    : '<i data-lucide="eye-off" class="icon-sm"></i>';
+  if (window.lucide) lucide.createIcons();
+});
 
 // Already signed in? Skip straight to the dashboard.
 onAuthStateChanged(auth, (user) => {

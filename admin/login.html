@@ -29,7 +29,12 @@
       </label>
       <label class="field">
         <span>Password</span>
-        <input type="password" name="password" autocomplete="current-password" required />
+        <div class="password-field">
+          <input type="password" name="password" id="password-input" autocomplete="current-password" required />
+          <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password">
+            <i data-lucide="eye" class="icon-sm"></i>
+          </button>
+        </div>
       </label>
       <div id="login-message" class="form-message" role="alert" hidden></div>
       <button type="submit" class="btn-accent btn-block" id="login-submit">
@@ -40,6 +45,7 @@
   </div>
 </main>
 
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script type="module" src="/admin/js/login.js"></script>
 </body>
 </html>
