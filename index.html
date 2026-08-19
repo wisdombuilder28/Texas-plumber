@@ -14,8 +14,15 @@
 <meta property="og:image" content="assets/logo-full.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
-<link rel="icon" href="assets/logo-mark.png" type="image/png" />
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192" />
+<link rel="icon" href="/assets/icon-512.png" type="image/png" sizes="512x512" />
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="application-name" content="N.D. Flow Plumbing Co." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="N.D. Flow" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
@@ -54,6 +61,7 @@
     </nav>
     <div class="header-cta">
       <a href="tel:+2349016836967" class="header-phone">+234 901 683 6967</a>
+      <button type="button" class="btn-install" data-install-app hidden><i data-lucide="download" class="icon-sm"></i> Install App</button>
       <a href="tel:+2349016836967" class="btn-accent"><i data-lucide="phone" class="icon-sm"></i> Call Now</a>
     </div>
     <a href="tel:+2349016836967" class="btn-accent header-cta-compact"><i data-lucide="phone" class="icon-sm"></i> Call Now</a>
@@ -68,6 +76,7 @@
       <a href="#areas">Who We Serve</a>
       <a href="#contact">Contact</a>
       <a href="tel:+2349016836967" class="btn-accent" style="margin-top:.5rem;"><i data-lucide="phone" class="icon-sm"></i> Call +234 901 683 6967</a>
+      <button type="button" class="btn-install btn-install-block" data-install-app hidden><i data-lucide="download" class="icon-sm"></i> Install App</button>
     </nav>
   </div>
 </header>
@@ -272,7 +281,17 @@
 </footer>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<div id="ios-install-tip" class="ios-install-tip" hidden>
+  <img src="/assets/icon-192.png" alt="" />
+  <div class="ios-install-tip-text">
+    <strong>Install N.D. Flow</strong>
+    <span>Tap <i data-lucide="share" class="icon-sm"></i> Share, then <b>Add to Home Screen</b>.</span>
+  </div>
+  <button type="button" id="ios-install-tip-close" aria-label="Dismiss"><i data-lucide="x" class="icon-sm"></i></button>
+</div>
+
 <script src="script.js"></script>
 <script type="module" src="gallery-live.js"></script>
+<script src="/pwa.js"></script>
 </body>
 </html>

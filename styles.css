@@ -257,3 +257,39 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .footer-bottom{border-top:1px solid rgba(255,255,255,.1);}
 .footer-bottom-inner{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:.5rem;padding:1.5rem 0;font-size:.75rem;color:rgba(255,255,255,.6);}
 @media(min-width:640px){.footer-bottom-inner{flex-direction:row;}}
+
+
+/* ---------- PWA install UI ---------- */
+.btn-install{
+  display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;
+  padding:.6rem 1rem;font-size:.875rem;font-weight:700;border-radius:.6rem;
+  background:transparent;color:var(--accent);
+  border:1px solid oklch(0.75 0.135 82 / .45);
+  transition:background .18s ease,color .18s ease,transform .18s ease;
+}
+.btn-install:hover{background:oklch(0.75 0.135 82 / .14);transform:translateY(-1px);}
+.btn-install[hidden]{display:none !important;}
+.btn-install-block{width:100%;justify-content:center;margin-top:.5rem;}
+
+.ios-install-tip{
+  position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:80;
+  display:flex;align-items:center;gap:.75rem;
+  padding:.75rem .9rem;border-radius:.9rem;
+  background:oklch(0.19 0.008 80);color:#f5f1e8;
+  border:1px solid oklch(0.75 0.135 82 / .35);
+  box-shadow:0 18px 40px rgb(0 0 0 / .45);
+}
+.ios-install-tip[hidden]{display:none !important;}
+.ios-install-tip img{width:40px;height:40px;border-radius:.6rem;flex:none;}
+.ios-install-tip-text{display:flex;flex-direction:column;gap:.15rem;font-size:.85rem;line-height:1.35;}
+.ios-install-tip-text strong{font-size:.9rem;}
+.ios-install-tip-text span{color:oklch(0.82 0.01 80);}
+.ios-install-tip-text svg{display:inline;vertical-align:-3px;}
+.ios-install-tip button{
+  margin-left:auto;flex:none;background:transparent;border:0;color:oklch(0.8 0.01 80);
+  cursor:pointer;padding:.35rem;border-radius:.4rem;
+}
+.ios-install-tip button:hover{color:#fff;background:oklch(1 0 0 / .08);}
+@media (min-width:768px){
+  .ios-install-tip{left:auto;right:1.25rem;max-width:22rem;}
+}
