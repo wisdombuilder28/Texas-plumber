@@ -22,7 +22,9 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAdmin()
         && request.resource.data.imageData is string
-        && request.resource.data.imageData.size() < 900000;
+        && request.resource.data.imageData.size() < 900000
+        && request.resource.data.caption is string
+        && request.resource.data.caption.size() < 200;
       allow delete: if isAdmin();
     }
 
