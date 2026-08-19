@@ -157,6 +157,19 @@ function blobToDataURL(blob) {
   });
 }
 
+// Races a promise against a timer so a slow connection can never leave the UI
+// frozen on "Saving..." with no feedback. Note this only stops the client from
+// *waiting* -- it can't cancel the network request already in flight, so on a
+// very slow connection the photo can still appear moments later even after a
+// timeout message shows. The live gallery listener will reflect reality either way.
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error("timeout"), { code: "client-timeout" })), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ---------- Upload ----------
 async function handleFiles(fileList) {
   const files = Array.from(fileList || []);
@@ -189,19 +202,26 @@ async function handleFiles(fileList) {
       const dataUrl = await blobToDataURL(compressed);
 
       setProgress(`Saving ${label}…`, 90);
-      await addDoc(collection(db, "gallery"), {
-        imageData: dataUrl,
-        alt: "N.D. Flow Plumbing Co. completed project",
-        sizeBytes: compressed.size,
-        order: Date.now(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        addDoc(collection(db, "gallery"), {
+          imageData: dataUrl,
+          alt: "N.D. Flow Plumbing Co. completed project",
+          sizeBytes: compressed.size,
+          order: Date.now(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        25000
+      );
 
       setProgress(`Saved ${label}`, 100);
     } catch (error) {
       console.error("Upload failed:", error);
-      showMessage(`${original.name}: upload failed. Check your connection and try again.`);
+      if (error?.code === "client-timeout") {
+        showMessage(`${original.name}: this is taking too long on the current connection. It may still finish in the background — check the gallery below in a moment before retrying.`);
+      } else {
+        showMessage(`${original.name}: ${friendlyFirestoreError(error)}`);
+      }
     }
   }
 

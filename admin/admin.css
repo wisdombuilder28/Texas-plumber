@@ -223,6 +223,7 @@ body.admin-body.auth-ready .auth-loading{display:none;}
 }
 
 .empty-state{display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:3rem 1rem;color:var(--muted-foreground);text-align:center;}
+.empty-state[hidden]{display:none;}
 .empty-state .icon{width:2rem;height:2rem;opacity:.5;}
 
 @media (min-width:600px){.gallery-grid-admin{grid-template-columns:repeat(3,1fr);}}
