@@ -23,6 +23,7 @@ try {
         return {
           src: data.imageData,
           alt: data.alt || "N.D. Flow Plumbing Co. completed project",
+          caption: data.caption || "",
         };
       });
       window.NDFlow?.renderGallery(items);

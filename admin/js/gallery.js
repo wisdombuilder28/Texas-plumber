@@ -25,10 +25,11 @@ requireAuth((user) => {
 // no Firebase Storage, no billing account needed. Firestore caps a document at 1 MiB
 // total, so the encoded image has to stay comfortably under that. These numbers match
 // the check in firestore.rules, so anything rejected here would be rejected there too.
-const MAX_INPUT_BYTES = 20 * 1024 * 1024;               // sanity ceiling on what we'll even try to process
-const MAX_ENCODED_BYTES = 700 * 1024;                    // final base64 string budget
-const MAX_RAW_BYTES = Math.floor((MAX_ENCODED_BYTES * 3) / 4); // ~525KB of image bytes before base64 inflates it ~33%
+const MAX_INPUT_BYTES = 20 * 1024 * 1024;
+const MAX_ENCODED_BYTES = 700 * 1024;
+const MAX_RAW_BYTES = Math.floor((MAX_ENCODED_BYTES * 3) / 4);
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const DEFAULT_ALT = "N.D. Flow Plumbing Co. completed project";
 
 const grid = document.getElementById("gallery-grid-admin");
 const emptyState = document.getElementById("gallery-empty");
@@ -37,6 +38,15 @@ const progressWrap = document.getElementById("upload-progress");
 const progressLabel = document.getElementById("upload-progress-label");
 const progressFill = document.getElementById("upload-progress-fill");
 const fileInput = document.getElementById("gallery-input");
+const uploadLabel = document.querySelector(".upload-label");
+const stagingArea = document.getElementById("staging-area");
+const stagingList = document.getElementById("staging-list");
+const stagingCount = document.getElementById("staging-count");
+const stagingCancelBtn = document.getElementById("staging-cancel");
+const stagingConfirmBtn = document.getElementById("staging-confirm");
+
+// Files the admin has picked but not yet confirmed -- { file, previewUrl, caption }
+let pending = [];
 
 function showMessage(text, kind = "error") {
   messageEl.textContent = text;
@@ -88,6 +98,7 @@ function renderGrid(snapshot) {
       return `
       <figure class="gallery-admin-item">
         <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
+        ${d.caption ? `<figcaption>${escapeHtml(d.caption)}</figcaption>` : ""}
         <button type="button" class="btn-danger delete-btn" data-id="${docSnap.id}">
           <i data-lucide="trash-2" class="icon-sm"></i> Delete
         </button>
@@ -102,8 +113,6 @@ function renderGrid(snapshot) {
 }
 
 // ---------- Delete ----------
-// No Storage file to clean up anymore -- the photo lives inside the Firestore
-// document itself, so deleting the document deletes the photo. One call, done.
 async function deletePhoto(id, btn) {
   if (!window.confirm("Delete this photo? It will disappear from the public site immediately.")) return;
   btn.disabled = true;
@@ -112,16 +121,100 @@ async function deletePhoto(id, btn) {
     showMessage("Photo deleted.", "success");
   } catch (error) {
     console.error("Delete failed:", error);
-    showMessage("Couldn't delete that photo. Please try again.");
+    showMessage(`Couldn't delete that photo: ${friendlyFirestoreError(error)}`);
     btn.disabled = false;
   }
 }
 
+// Turns a raw Firestore error into something specific enough to act on, instead
+// of always saying "check your connection" when the real problem is something
+// else entirely (like not being recognized as an admin yet).
+function friendlyFirestoreError(error) {
+  switch (error?.code) {
+    case "permission-denied":
+      return "blocked — this account isn't recognized as an admin yet (check the `admins` collection in Firebase Console)";
+    case "unauthenticated":
+      return "you've been signed out — refresh the page and log in again";
+    case "unavailable":
+    case "deadline-exceeded":
+      return "network issue — check your connection and try again";
+    default:
+      return error?.code ? `failed (${error.code}) — try again` : "failed — try again";
+  }
+}
+
+// ---------- Staging: pick photos, add optional captions, then confirm ----------
+function stageFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  messageEl.hidden = true;
+
+  for (const file of files) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      showMessage(`${file.name}: only JPG, PNG, or WebP images are allowed.`);
+      continue;
+    }
+    if (file.size > MAX_INPUT_BYTES) {
+      showMessage(`${file.name}: that file is too large to process (max 20MB).`);
+      continue;
+    }
+    pending.push({ file, previewUrl: URL.createObjectURL(file), caption: "" });
+  }
+  renderStaging();
+}
+
+function renderStaging() {
+  if (!pending.length) {
+    stagingArea.hidden = true;
+    stagingList.innerHTML = "";
+    return;
+  }
+  stagingArea.hidden = false;
+  stagingCount.textContent = pending.length;
+  stagingList.innerHTML = pending
+    .map(
+      (p, i) => `
+      <div class="staging-item">
+        <img src="${p.previewUrl}" alt="" class="staging-thumb" />
+        <label class="field staging-caption-field">
+          <span>Caption (optional)</span>
+          <input type="text" class="staging-caption-input" data-index="${i}" maxlength="140"
+            placeholder="e.g. Bathroom pipe replacement — Lekki" value="${escapeHtml(p.caption)}" />
+        </label>
+        <button type="button" class="icon-btn staging-remove" data-index="${i}" aria-label="Remove photo">
+          <i data-lucide="x" class="icon-sm"></i>
+        </button>
+      </div>`
+    )
+    .join("");
+
+  stagingList.querySelectorAll(".staging-caption-input").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      pending[Number(e.target.dataset.index)].caption = e.target.value;
+    });
+  });
+  stagingList.querySelectorAll(".staging-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.index);
+      URL.revokeObjectURL(pending[i].previewUrl);
+      pending.splice(i, 1);
+      renderStaging();
+    });
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+function clearStaging() {
+  pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+  pending = [];
+  renderStaging();
+}
+
+stagingCancelBtn.addEventListener("click", clearStaging);
+
 // ---------- Compression ----------
 // Iteratively re-encodes the photo, shrinking quality first, then dimensions, until
-// it fits MAX_RAW_BYTES. Real phone photos usually converge in 1-2 passes; the loop
-// is the safety net for the rare very-detailed image that doesn't compress easily.
-// Bounded at 8 attempts so this can never hang.
+// it fits MAX_RAW_BYTES. Bounded at 8 attempts so this can never hang.
 async function compressToFit(file) {
   const bitmap = await createImageBitmap(file);
   let dimension = 1600;
@@ -161,7 +254,7 @@ function blobToDataURL(blob) {
 // frozen on "Saving..." with no feedback. Note this only stops the client from
 // *waiting* -- it can't cancel the network request already in flight, so on a
 // very slow connection the photo can still appear moments later even after a
-// timeout message shows. The live gallery listener will reflect reality either way.
+// timeout message shows. The live gallery listener reflects reality either way.
 function withTimeout(promise, ms) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -170,24 +263,19 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// ---------- Upload ----------
-async function handleFiles(fileList) {
-  const files = Array.from(fileList || []);
-  if (!files.length) return;
-  messageEl.hidden = true;
+// ---------- Upload (runs on the confirmed staged files) ----------
+async function uploadStaged() {
+  if (!pending.length) return;
+  const items = pending.splice(0);
+  renderStaging(); // staging area closes immediately; the progress bar takes over
 
-  for (let i = 0; i < files.length; i++) {
-    const original = files[i];
-    const label = `(${i + 1}/${files.length}) ${original.name}`;
+  fileInput.disabled = true;
+  uploadLabel.classList.add("disabled");
 
-    if (!ALLOWED_TYPES.includes(original.type)) {
-      showMessage(`${original.name}: only JPG, PNG, or WebP images are allowed.`);
-      continue;
-    }
-    if (original.size > MAX_INPUT_BYTES) {
-      showMessage(`${original.name}: that file is too large to process (max 20MB).`);
-      continue;
-    }
+  for (let i = 0; i < items.length; i++) {
+    const { file: original, previewUrl, caption } = items[i];
+    const label = `(${i + 1}/${items.length}) ${original.name}`;
+    const trimmedCaption = caption.trim();
 
     try {
       setProgress(`Compressing ${label}…`, 30);
@@ -205,7 +293,8 @@ async function handleFiles(fileList) {
       await withTimeout(
         addDoc(collection(db, "gallery"), {
           imageData: dataUrl,
-          alt: "N.D. Flow Plumbing Co. completed project",
+          caption: trimmedCaption,
+          alt: trimmedCaption || DEFAULT_ALT,
           sizeBytes: compressed.size,
           order: Date.now(),
           createdAt: serverTimestamp(),
@@ -222,12 +311,17 @@ async function handleFiles(fileList) {
       } else {
         showMessage(`${original.name}: ${friendlyFirestoreError(error)}`);
       }
+    } finally {
+      URL.revokeObjectURL(previewUrl);
     }
   }
 
   hideProgress();
+  fileInput.disabled = false;
+  uploadLabel.classList.remove("disabled");
   fileInput.value = "";
   if (messageEl.hidden) showMessage("Upload complete. The public gallery updates automatically.", "success");
 }
 
-fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
+stagingConfirmBtn.addEventListener("click", uploadStaged);
+fileInput.addEventListener("change", (e) => stageFiles(e.target.files));
