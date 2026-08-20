@@ -54,6 +54,26 @@
           <i data-lucide="arrow-right" class="icon-sm"></i>
         </a>
       </section>
+
+      <section class="admin-panel">
+        <h2>Account &amp; access</h2>
+        <div class="account-check">
+          <div class="account-row">
+            <span class="account-row-label">Signed in as</span>
+            <span id="account-email" class="account-row-value"></span>
+          </div>
+          <div class="account-row">
+            <span class="account-row-label">UID</span>
+            <div class="account-uid-row">
+              <code id="account-uid" class="account-uid"></code>
+              <button type="button" id="copy-uid-btn" class="icon-btn" aria-label="Copy UID">
+                <i data-lucide="copy" class="icon-sm"></i>
+              </button>
+            </div>
+          </div>
+          <div id="admin-status" class="admin-status-badge">Checking admin access…</div>
+        </div>
+      </section>
     </main>
   </div>
 </div>
