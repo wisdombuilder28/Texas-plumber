@@ -179,6 +179,7 @@ function renderStaging() {
         <label class="field staging-caption-field">
           <span>Caption (optional)</span>
           <input type="text" class="staging-caption-input" data-index="${i}" maxlength="140"
+            autocomplete="off" autocorrect="off" spellcheck="false" name="caption-${i}-${Date.now()}"
             placeholder="e.g. Bathroom pipe replacement — Lekki" value="${escapeHtml(p.caption)}" />
         </label>
         <button type="button" class="icon-btn staging-remove" data-index="${i}" aria-label="Remove photo">
