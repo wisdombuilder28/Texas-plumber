@@ -139,6 +139,15 @@ module.exports = async (req, res) => {
     res.status(200).json(summary);
   } catch (err) {
     console.error("Analytics endpoint failed:", err);
-    res.status(500).json({ error: "Failed to load analytics" });
+    const googleStatus = err?.code || err?.response?.status;
+    let reason = "GA4 request failed";
+    if (googleStatus === 403) {
+      reason = "GA4 permission denied — check the service account has Viewer access on the property, and the Data API is enabled";
+    } else if (googleStatus === 400) {
+      reason = "GA4 bad request — check GA4_PROPERTY_ID is the numeric Property ID, not the G-XXXX Measurement ID";
+    } else if (googleStatus === 404) {
+      reason = "GA4 property not found — check GA4_PROPERTY_ID is correct";
+    }
+    res.status(500).json({ error: reason });
   }
 };
