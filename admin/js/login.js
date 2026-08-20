@@ -2,6 +2,8 @@
 import { auth } from "../../firebase-config.js";
 import {
   signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
   sendPasswordResetEmail,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
@@ -67,6 +69,8 @@ form.addEventListener("submit", async (e) => {
 
   setLoading(true);
   try {
+    // Keep the admin signed in across app launches / reloads.
+    await setPersistence(auth, browserLocalPersistence);
     await signInWithEmailAndPassword(auth, email, password);
     window.location.replace("/admin/dashboard.html");
   } catch (err) {

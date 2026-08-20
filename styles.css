@@ -293,3 +293,19 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 @media (min-width:768px){
   .ios-install-tip{left:auto;right:1.25rem;max-width:22rem;}
 }
+
+
+/* Discreet admin entry in the footer - visually near-invisible, still reachable */
+.footer-bottom .admin-link {
+  color: inherit;
+  opacity: 0.18;
+  font-size: 0.85em;
+  text-decoration: none;
+  margin-left: 0.35rem;
+  transition: opacity 0.2s ease;
+}
+.footer-bottom .admin-link:hover,
+.footer-bottom .admin-link:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}
