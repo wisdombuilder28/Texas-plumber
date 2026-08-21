@@ -21,6 +21,11 @@ function escapeHtml(value) {
   }[c]));
 }
 
+function formatDate(timestamp) {
+  if (!timestamp?.toDate) return null;
+  return timestamp.toDate().toLocaleDateString("en-NG", { month: "long", year: "numeric" });
+}
+
 function render(snapshot) {
   if (snapshot.empty) {
     listEl.innerHTML = "";
@@ -32,12 +37,16 @@ function render(snapshot) {
     .map((docSnap) => {
       const d = docSnap.data();
       const alt = d.alt || "N.D. Flow Plumbing Co. completed project";
+      const dateLabel = formatDate(d.createdAt) || "Completed project";
       return `
         <article class="work-item">
           <div class="work-item-media">
             <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(alt)}" loading="lazy" />
           </div>
-          ${d.caption ? `<p class="work-item-caption">${escapeHtml(d.caption)}</p>` : ""}
+          <div class="work-item-body">
+            <div class="work-item-label"><span class="dot"></span> ${escapeHtml(dateLabel)}</div>
+            ${d.caption ? `<p class="work-item-caption">${escapeHtml(d.caption)}</p>` : ""}
+          </div>
         </article>`;
     })
     .join("");
