@@ -26,6 +26,21 @@ service cloud.firestore {
         && request.resource.data.caption is string
         && request.resource.data.caption.size() < 200;
       allow delete: if isAdmin();
+
+      // Public likes, one per visitor. The document ID *is* the visitor's Firebase
+      // Auth UID (anonymous or admin), so nobody can create a like at any path but
+      // their own -- Firestore itself refuses a second like from the same identity,
+      // this isn't just a client-side check. Unliking is a delete of that same doc.
+      // Nothing here can touch the gallery document above; this is a separate,
+      // independently-secured subcollection.
+      match /likes/{uid} {
+        allow read: if true;
+        allow create: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['likedAt'])
+          && request.resource.data.likedAt == request.time;
+        allow delete: if request.auth != null && request.auth.uid == uid;
+        allow update: if false;
+      }
     }
 
     // ---- Reserved for future phases: schema is live now, UI/dashboard pages come later ----
