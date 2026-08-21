@@ -111,6 +111,19 @@
 
 </main>
 
+<div id="lightbox" class="lightbox" hidden>
+  <button type="button" id="lightbox-close" class="lightbox-close" aria-label="Close"><i data-lucide="x" class="icon"></i></button>
+  <button type="button" id="lightbox-prev" class="lightbox-nav lightbox-prev" aria-label="Previous photo"><i data-lucide="chevron-left" class="icon"></i></button>
+  <button type="button" id="lightbox-next" class="lightbox-nav lightbox-next" aria-label="Next photo"><i data-lucide="chevron-right" class="icon"></i></button>
+  <div class="lightbox-content">
+    <img id="lightbox-image" src="" alt="" />
+    <div class="lightbox-caption">
+      <span id="lightbox-date" class="lightbox-date"></span>
+      <p id="lightbox-text"></p>
+    </div>
+  </div>
+</div>
+
 <footer class="site-footer">
   <div class="container-tight footer-grid">
     <div class="footer-brand">
