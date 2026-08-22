@@ -37,6 +37,7 @@ const lightboxNext = document.getElementById("lightbox-next");
 let items = []; // current photo list, in display order
 let currentIndex = 0;
 let currentUid = null; // set once anonymous (or admin) sign-in resolves
+let signInPromise = null;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
@@ -49,6 +50,25 @@ function formatDate(timestamp) {
   return timestamp.toDate().toLocaleDateString("en-NG", { month: "long", year: "numeric" });
 }
 
+// Returns a UID, signing in anonymously if needed. Safe to call from a tap
+// handler even if the background sign-in below never completed -- this is
+// the retry path, not just a one-shot attempt made silently on page load.
+function ensureSignedIn() {
+  if (currentUid) return Promise.resolve(currentUid);
+  if (!signInPromise) {
+    signInPromise = signInAnonymously(auth)
+      .then((result) => {
+        currentUid = result.user.uid;
+        return currentUid;
+      })
+      .catch((error) => {
+        signInPromise = null; // let the next attempt try again instead of staying stuck
+        throw error;
+      });
+  }
+  return signInPromise;
+}
+
 // ---------- Silent anonymous sign-in ----------
 // Only signs in anonymously if nobody is signed in at all -- this matters
 // specifically so an admin browsing their own public site while logged into
@@ -59,7 +79,9 @@ onAuthStateChanged(auth, (user) => {
     currentUid = user.uid;
     refreshLikeStates();
   } else {
-    signInAnonymously(auth).catch((err) => console.warn("Anonymous sign-in failed:", err));
+    ensureSignedIn()
+      .then(refreshLikeStates)
+      .catch((err) => console.warn("Anonymous sign-in failed:", err));
   }
 });
 
@@ -126,30 +148,37 @@ function likeDocRef(imageId, uid) {
 }
 
 function updateLikeButton(btn, count, liked) {
+  btn.classList.remove("is-loading");
   btn.setAttribute("aria-pressed", liked ? "true" : "false");
   btn.querySelector(".like-count").textContent = count;
   btn.disabled = false;
+  btn.title = "";
 }
 
 async function toggleLike(imageId, btn) {
-  if (!currentUid) return; // sign-in hasn't resolved yet
+  const wasLiked = btn.getAttribute("aria-pressed") === "true";
+  const countEl = btn.querySelector(".like-count");
+  const currentCount = Number(countEl.textContent);
+  const hasValidCount = Number.isFinite(currentCount);
+
   btn.disabled = true;
-  const liked = btn.getAttribute("aria-pressed") === "true";
-  const count = Number(btn.querySelector(".like-count").textContent) || 0;
-  const ref = likeDocRef(imageId, currentUid);
-
-  // Optimistic update -- feels instant, corrected below if the write fails.
-  updateLikeButton(btn, liked ? count - 1 : count + 1, !liked);
-
   try {
-    if (liked) {
+    const uid = await ensureSignedIn();
+    const ref = likeDocRef(imageId, uid);
+
+    if (wasLiked) {
       await deleteDoc(ref);
+      updateLikeButton(btn, hasValidCount ? currentCount - 1 : 0, false);
     } else {
       await setDoc(ref, { likedAt: serverTimestamp() });
+      updateLikeButton(btn, hasValidCount ? currentCount + 1 : 1, true);
     }
   } catch (error) {
     console.error("Like toggle failed:", error);
-    updateLikeButton(btn, count, liked); // revert
+    btn.classList.remove("is-loading");
+    btn.disabled = false;
+    countEl.textContent = hasValidCount ? currentCount : "0";
+    btn.title = "Couldn't connect just now — tap to try again";
   }
 }
 
@@ -202,7 +231,7 @@ function render(snapshot) {
         <div class="work-item-body">
           <div class="work-item-label"><span class="dot"></span> ${escapeHtml(item.dateLabel)}</div>
           ${item.caption ? `<p class="work-item-caption">${escapeHtml(item.caption)}</p>` : ""}
-          <button type="button" class="like-btn" data-id="${item.id}" aria-pressed="false" aria-label="Like this photo" disabled>
+          <button type="button" class="like-btn is-loading" data-id="${item.id}" aria-pressed="false" aria-label="Like this photo">
             <i data-lucide="heart" class="icon-sm"></i>
             <span class="like-count">–</span>
           </button>
