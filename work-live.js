@@ -16,10 +16,8 @@ import {
   orderBy,
   onSnapshot,
   doc,
-  getDoc,
   setDoc,
   deleteDoc,
-  getCountFromServer,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
@@ -77,10 +75,10 @@ function ensureSignedIn() {
 onAuthStateChanged(auth, (user) => {
   if (user) {
     currentUid = user.uid;
-    refreshLikeStates();
+    watchAllLikes();
   } else {
     ensureSignedIn()
-      .then(refreshLikeStates)
+      .then(watchAllLikes)
       .catch((err) => console.warn("Anonymous sign-in failed:", err));
   }
 });
@@ -155,51 +153,62 @@ function updateLikeButton(btn, count, liked) {
   btn.title = "";
 }
 
+// Toggling just writes the like doc or deletes it -- it does NOT compute the
+// new count or flip the color itself. That's deliberate: the live listener
+// below is the single source of truth for what the button shows, so this
+// can't ever fall out of sync with what's actually in the database, and it
+// naturally picks up likes/unlikes from other visitors too, live.
 async function toggleLike(imageId, btn) {
   const wasLiked = btn.getAttribute("aria-pressed") === "true";
-  const countEl = btn.querySelector(".like-count");
-  const currentCount = Number(countEl.textContent);
-  const hasValidCount = Number.isFinite(currentCount);
-
   btn.disabled = true;
   try {
     const uid = await ensureSignedIn();
     const ref = likeDocRef(imageId, uid);
-
     if (wasLiked) {
       await deleteDoc(ref);
-      updateLikeButton(btn, hasValidCount ? currentCount - 1 : 0, false);
     } else {
       await setDoc(ref, { likedAt: serverTimestamp() });
-      updateLikeButton(btn, hasValidCount ? currentCount + 1 : 1, true);
     }
+    btn.disabled = false; // the listener re-fires on its own and repaints count + color
   } catch (error) {
     console.error("Like toggle failed:", error);
-    btn.classList.remove("is-loading");
     btn.disabled = false;
-    countEl.textContent = hasValidCount ? currentCount : "0";
     btn.title = "Couldn't connect just now — tap to try again";
   }
 }
 
-async function refreshLikeStates() {
-  if (!currentUid || !items.length) return;
-  await Promise.all(
-    items.map(async (item) => {
-      const btn = listEl.querySelector(`.like-btn[data-id="${item.id}"]`);
-      if (!btn) return;
-      try {
-        const likesRef = collection(db, "gallery", item.id, "likes");
-        const [countSnap, mineSnap] = await Promise.all([
-          getCountFromServer(likesRef),
-          getDoc(likeDocRef(item.id, currentUid)),
-        ]);
-        updateLikeButton(btn, countSnap.data().count, mineSnap.exists());
-      } catch (error) {
-        console.warn(`Couldn't load like state for ${item.id}:`, error);
-      }
-    })
-  );
+let likeUnsubscribes = [];
+
+function clearLikeListeners() {
+  likeUnsubscribes.forEach((unsub) => unsub());
+  likeUnsubscribes = [];
+}
+
+// One live listener per photo's likes subcollection. Fires immediately with
+// the locally-applied change the instant you tap (before the server even
+// confirms it), and fires again -- on its own, no refresh needed -- whenever
+// anyone else, on any other device, likes or unlikes that same photo.
+async function watchAllLikes() {
+  clearLikeListeners();
+  try {
+    await ensureSignedIn();
+  } catch (error) {
+    console.warn("Sign-in not ready -- likes will show once it connects:", error);
+  }
+  items.forEach((item) => {
+    const btn = listEl.querySelector(`.like-btn[data-id="${item.id}"]`);
+    if (!btn) return;
+    const likesRef = collection(db, "gallery", item.id, "likes");
+    const unsub = onSnapshot(
+      likesRef,
+      (snapshot) => {
+        const liked = currentUid ? snapshot.docs.some((d) => d.id === currentUid) : false;
+        updateLikeButton(btn, snapshot.size, liked);
+      },
+      (error) => console.warn(`Likes listener failed for ${item.id}:`, error)
+    );
+    likeUnsubscribes.push(unsub);
+  });
 }
 
 // ---------- Live gallery list ----------
@@ -248,7 +257,7 @@ function render(snapshot) {
   });
 
   if (window.lucide) lucide.createIcons();
-  refreshLikeStates();
+  watchAllLikes();
 }
 
 try {
