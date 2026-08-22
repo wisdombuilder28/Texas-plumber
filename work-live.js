@@ -177,6 +177,51 @@ async function toggleLike(imageId, btn) {
   }
 }
 
+// One live listener per photo's likes subcollection. Fires immediately with
+// the locally-applied change the instant you tap (before the server even
+// confirms it), and fires again -- on its own, no refresh needed -- whenever
+// anyone else, on any other device, likes or unlikes that same photo.
+//
+// If the listener can't connect (most commonly: firestore.rules edited but
+// not actually published yet), this used to fail silently into the browser
+// console where nobody would ever see it. Now it retries a few times with a
+// growing delay (covers the ordinary case of rules still propagating right
+// after publishing), and if it's still failing after that, it says so
+// directly on the button instead of leaving it stuck on "–" forever.
+function watchLikesFor(item, btn, attempt = 0) {
+  const likesRef = collection(db, "gallery", item.id, "likes");
+  const unsub = onSnapshot(
+    likesRef,
+    (snapshot) => {
+      const liked = currentUid ? snapshot.docs.some((d) => d.id === currentUid) : false;
+      updateLikeButton(btn, snapshot.size, liked);
+    },
+    (error) => {
+      console.error(`Likes listener failed for ${item.id} (attempt ${attempt + 1}):`, error);
+      const stillCurrent = likeUnsubscribes.includes(unsub);
+      if (!stillCurrent) return; // page moved on (re-render/cleanup) -- drop this attempt
+
+      if (attempt < 3) {
+        setTimeout(() => {
+          const idx = likeUnsubscribes.indexOf(unsub);
+          if (idx === -1) return; // cleared during the wait -- don't resurrect it
+          likeUnsubscribes[idx] = watchLikesFor(item, btn, attempt + 1);
+        }, 1500 * (attempt + 1));
+        return;
+      }
+
+      btn.classList.remove("is-loading");
+      const countEl = btn.querySelector(".like-count");
+      countEl.textContent = error.code === "permission-denied" ? "setup?" : "offline";
+      btn.title = error.code === "permission-denied"
+        ? "Likes aren't set up yet -- firestore.rules needs to be published in Firebase Console"
+        : "Couldn't connect -- check your connection and reload";
+      btn.disabled = true;
+    }
+  );
+  return unsub;
+}
+
 let likeUnsubscribes = [];
 
 function clearLikeListeners() {
@@ -184,10 +229,6 @@ function clearLikeListeners() {
   likeUnsubscribes = [];
 }
 
-// One live listener per photo's likes subcollection. Fires immediately with
-// the locally-applied change the instant you tap (before the server even
-// confirms it), and fires again -- on its own, no refresh needed -- whenever
-// anyone else, on any other device, likes or unlikes that same photo.
 async function watchAllLikes() {
   clearLikeListeners();
   try {
@@ -198,16 +239,7 @@ async function watchAllLikes() {
   items.forEach((item) => {
     const btn = listEl.querySelector(`.like-btn[data-id="${item.id}"]`);
     if (!btn) return;
-    const likesRef = collection(db, "gallery", item.id, "likes");
-    const unsub = onSnapshot(
-      likesRef,
-      (snapshot) => {
-        const liked = currentUid ? snapshot.docs.some((d) => d.id === currentUid) : false;
-        updateLikeButton(btn, snapshot.size, liked);
-      },
-      (error) => console.warn(`Likes listener failed for ${item.id}:`, error)
-    );
-    likeUnsubscribes.push(unsub);
+    likeUnsubscribes.push(watchLikesFor(item, btn));
   });
 }
 
