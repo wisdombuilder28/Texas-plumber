@@ -371,6 +371,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .like-btn[aria-pressed="true"]{background:oklch(0.96 0.03 20);border-color:oklch(0.78 0.15 20);color:oklch(0.55 0.22 20);}
 .like-btn[aria-pressed="true"] .icon-sm{fill:currentColor;}
 .like-btn:disabled{opacity:.5;cursor:default;}
+.like-btn[data-retry="true"]{border-style:dashed;}
 .like-btn.is-loading .like-count{opacity:.4;animation:like-pulse 1.3s ease-in-out infinite;}
 @keyframes like-pulse{0%,100%{opacity:.3;}50%{opacity:.75;}}
 .empty-note{text-align:center;color:var(--muted-foreground);padding:3.5rem 1rem;font-size:.95rem;margin-top:2rem;border:1px dashed var(--border);border-radius:1rem;}

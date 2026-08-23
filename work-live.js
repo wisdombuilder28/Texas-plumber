@@ -16,6 +16,7 @@ import {
   orderBy,
   onSnapshot,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   serverTimestamp,
@@ -159,12 +160,17 @@ function updateLikeButton(btn, count, liked) {
 // can't ever fall out of sync with what's actually in the database, and it
 // naturally picks up likes/unlikes from other visitors too, live.
 async function toggleLike(imageId, btn) {
-  const wasLiked = btn.getAttribute("aria-pressed") === "true";
   btn.disabled = true;
   try {
     const uid = await ensureSignedIn();
     const ref = likeDocRef(imageId, uid);
-    if (wasLiked) {
+    // Authoritative check -- NOT the button's on-screen aria-pressed, which
+    // is only ever painted by the live listener and can briefly lag behind
+    // the real database state. Deciding from stale UI here was the actual
+    // bug: it could try to create a like that already existed, which the
+    // rules correctly reject as an illegal edit (allow update: if false).
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
       await deleteDoc(ref);
     } else {
       await setDoc(ref, { likedAt: serverTimestamp() });
@@ -173,7 +179,7 @@ async function toggleLike(imageId, btn) {
   } catch (error) {
     console.error("Like toggle failed:", error);
     btn.disabled = false;
-    btn.title = "Couldn't connect just now — tap to try again";
+    btn.title = "Couldn't update your like just now — tap to try again";
   }
 }
 
@@ -189,6 +195,7 @@ async function toggleLike(imageId, btn) {
 // after publishing), and if it's still failing after that, it says so
 // directly on the button instead of leaving it stuck on "–" forever.
 function watchLikesFor(item, btn, attempt = 0) {
+  delete btn.dataset.retry;
   const likesRef = collection(db, "gallery", item.id, "likes");
   const unsub = onSnapshot(
     likesRef,
@@ -214,9 +221,9 @@ function watchLikesFor(item, btn, attempt = 0) {
       const countEl = btn.querySelector(".like-count");
       countEl.textContent = error.code === "permission-denied" ? "setup?" : "offline";
       btn.title = error.code === "permission-denied"
-        ? "Likes aren't set up yet -- firestore.rules needs to be published in Firebase Console"
-        : "Couldn't connect -- check your connection and reload";
-      btn.disabled = true;
+        ? "Likes aren't set up yet -- tap to retry, or check firestore.rules is published"
+        : "Couldn't connect -- tap to retry";
+      btn.dataset.retry = "true"; // clicking now retries the connection instead of toggling a like
     }
   );
   return unsub;
@@ -285,7 +292,14 @@ function render(snapshot) {
     btn.addEventListener("click", () => openLightbox(Number(btn.dataset.index)));
   });
   listEl.querySelectorAll(".like-btn").forEach((btn) => {
-    btn.addEventListener("click", () => toggleLike(btn.dataset.id, btn));
+    btn.addEventListener("click", () => {
+      if (btn.dataset.retry === "true") {
+        const item = items.find((i) => i.id === btn.dataset.id);
+        if (item) likeUnsubscribes.push(watchLikesFor(item, btn));
+        return;
+      }
+      toggleLike(btn.dataset.id, btn);
+    });
   });
 
   if (window.lucide) lucide.createIcons();
