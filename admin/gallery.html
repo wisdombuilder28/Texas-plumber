@@ -58,10 +58,19 @@
         </div>
 
         <div id="staging-area" class="staging-area" hidden>
-          <div id="staging-list" class="staging-list"></div>
-          <div class="staging-actions">
-            <button type="button" id="staging-cancel" class="btn-ghost-dark">Cancel</button>
-            <button type="button" id="staging-confirm" class="btn-accent">Upload <span id="staging-count"></span></button>
+          <div class="staging-card">
+            <div class="staging-card-head">
+              <div class="staging-card-title">
+                <i data-lucide="image-plus" class="icon-sm"></i>
+                <span id="staging-headline">1 photo ready to post</span>
+              </div>
+              <span class="staging-card-meta" id="staging-meta"></span>
+            </div>
+            <div id="staging-list" class="staging-list"></div>
+            <div class="staging-actions">
+              <button type="button" id="staging-cancel" class="btn-ghost-dark">Cancel</button>
+              <button type="button" id="staging-confirm" class="btn-accent">Post <span id="staging-count"></span></button>
+            </div>
           </div>
         </div>
 
