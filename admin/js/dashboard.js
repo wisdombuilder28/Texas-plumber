@@ -1,5 +1,5 @@
 // admin/js/dashboard.js
-import { requireAuth, wireLogout, wireSidebar, wireAccountInfo, checkAdminStatus } from "./auth-guard.js";
+import { requireAuth, wireLogout, wireSidebar } from "./auth-guard.js";
 
 wireSidebar();
 wireLogout("logout-btn");
@@ -7,32 +7,13 @@ if (window.lucide) lucide.createIcons();
 
 requireAuth((user) => {
   document.getElementById("admin-email").textContent = user.email;
-  wireAccountInfo(user);
   loadStats(user);
-  runAdminStatusCheck(user);
 });
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
-}
-
-// ---------- Account & access self-check ----------
-async function runAdminStatusCheck(user) {
-  const statusEl = document.getElementById("admin-status");
-  if (!statusEl) return;
-  try {
-    const isAdmin = await checkAdminStatus(user);
-    statusEl.className = `admin-status-badge ${isAdmin ? "ok" : "bad"}`;
-    statusEl.textContent = isAdmin
-      ? "✓ Recognized as admin — gallery uploads and analytics should work"
-      : "✗ Not recognized as admin yet — copy the UID above and add it as a document ID in Firestore's admins collection";
-  } catch (error) {
-    console.error("Admin status check failed:", error);
-    statusEl.className = "admin-status-badge bad";
-    statusEl.textContent = "Couldn't check admin status — check your connection and reload";
-  }
 }
 
 // ---------- Visitor stats ----------

@@ -181,23 +181,6 @@ body.admin-body.auth-ready .auth-loading{display:none;}
 
 .admin-panel{background:#fff;border:1px solid var(--border);border-radius:.75rem;padding:1.25rem;box-shadow:var(--shadow-card);}
 .admin-panel h2{font-size:1rem;margin-bottom:.85rem;}
-
-.account-check{display:flex;flex-direction:column;gap:.65rem;}
-.account-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;}
-.account-row-label{font-size:.78rem;color:var(--muted-foreground);font-weight:600;}
-.account-row-value{font-size:.85rem;font-weight:600;color:var(--brand-black);word-break:break-all;}
-.account-uid-row{display:flex;align-items:center;gap:.4rem;max-width:100%;}
-.account-uid{
-  font-family:ui-monospace,monospace;font-size:.72rem;color:var(--brand-black);
-  background:var(--surface-soft);padding:.35rem .5rem;border-radius:.35rem;
-  word-break:break-all;user-select:all;
-}
-.admin-status-badge{
-  font-size:.82rem;font-weight:600;padding:.65rem .8rem;border-radius:.5rem;
-  background:var(--surface-soft);color:var(--muted-foreground);
-}
-.admin-status-badge.ok{background:var(--success-soft);color:var(--success);}
-.admin-status-badge.bad{background:var(--danger-soft);color:var(--danger);}
 .admin-quick-action{
   display:flex;align-items:center;justify-content:space-between;gap:.5rem;
   padding:.85rem 1rem;border:1px solid var(--border);border-radius:.6rem;
