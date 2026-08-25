@@ -128,16 +128,29 @@ module.exports = async (req, res) => {
     return;
   }
 
-  try {
-    const authResult = await verifyAdmin(req, app);
-    if (!authResult.ok) {
-      res.status(authResult.status).json({ error: authResult.error });
-      return;
-    }
+  // verifyAdmin() and fetchGa4Summary() don't depend on each other's result --
+  // running them one after another was pure wasted time against Vercel's
+  // execution limit, on top of a chain that already involves several network
+  // round-trips (verify token, check Firestore, get a Google OAuth token,
+  // query the GA4 API). Running them together roughly halves the worst case.
+  const [authOutcome, ga4Outcome] = await Promise.allSettled([
+    verifyAdmin(req, app),
+    fetchGa4Summary(propertyId, serviceAccount),
+  ]);
 
-    const summary = await fetchGa4Summary(propertyId, serviceAccount);
-    res.status(200).json(summary);
-  } catch (err) {
+  if (authOutcome.status === "rejected") {
+    console.error("Admin verification crashed:", authOutcome.reason);
+    res.status(500).json({ error: "Admin check failed" });
+    return;
+  }
+  const authResult = authOutcome.value;
+  if (!authResult.ok) {
+    res.status(authResult.status).json({ error: authResult.error });
+    return;
+  }
+
+  if (ga4Outcome.status === "rejected") {
+    const err = ga4Outcome.reason;
     console.error("Analytics endpoint failed:", err);
     const googleStatus = err?.code || err?.response?.status;
     let reason = "GA4 request failed";
@@ -149,5 +162,8 @@ module.exports = async (req, res) => {
       reason = "GA4 property not found — check GA4_PROPERTY_ID is correct";
     }
     res.status(500).json({ error: reason });
+    return;
   }
+
+  res.status(200).json(ga4Outcome.value);
 };

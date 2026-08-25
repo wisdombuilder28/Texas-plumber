@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/analytics.js": { "maxDuration": 30 }
+  },
   "rewrites": [
     { "source": "/admin", "destination": "/admin/login.html" }
   ],
