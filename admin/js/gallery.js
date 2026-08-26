@@ -40,6 +40,8 @@ const progressFill = document.getElementById("upload-progress-fill");
 const fileInput = document.getElementById("gallery-input");
 const uploadLabel = document.querySelector(".upload-label");
 const stagingArea = document.getElementById("staging-area");
+const stagingHeadline = document.getElementById("staging-headline");
+const stagingMeta = document.getElementById("staging-meta");
 const stagingList = document.getElementById("staging-list");
 const stagingCount = document.getElementById("staging-count");
 const stagingCancelBtn = document.getElementById("staging-cancel");
@@ -58,6 +60,12 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function setProgress(label, pct) {
@@ -170,28 +178,49 @@ function renderStaging() {
     return;
   }
   stagingArea.hidden = false;
+
+  stagingHeadline.textContent = pending.length === 1
+    ? "1 photo ready to post"
+    : `${pending.length} photos ready to post`;
+  const totalBytes = pending.reduce((sum, p) => sum + p.file.size, 0);
+  stagingMeta.textContent = `${formatFileSize(totalBytes)} total`;
   stagingCount.textContent = pending.length;
+
   stagingList.innerHTML = pending
     .map(
       (p, i) => `
       <div class="staging-item">
-        <img src="${p.previewUrl}" alt="" class="staging-thumb" />
-        <label class="field staging-caption-field">
-          <span>Caption (optional)</span>
-          <input type="text" class="staging-caption-input" data-index="${i}" maxlength="140"
-            autocomplete="off" autocorrect="off" spellcheck="false" name="caption-${i}-${Date.now()}"
-            placeholder="e.g. Bathroom pipe replacement — Lekki" value="${escapeHtml(p.caption)}" />
-        </label>
-        <button type="button" class="icon-btn staging-remove" data-index="${i}" aria-label="Remove photo">
-          <i data-lucide="x" class="icon-sm"></i>
-        </button>
+        <div class="staging-media-wrap">
+          <img src="${p.previewUrl}" alt="" class="staging-media" />
+          <button type="button" class="staging-remove" data-index="${i}" aria-label="Remove photo">
+            <i data-lucide="x" class="icon-sm"></i>
+          </button>
+        </div>
+        <div class="staging-file-info">
+          <i data-lucide="image" class="icon-sm"></i>
+          <span>${escapeHtml(p.file.name)}</span>
+          <span class="staging-file-size">${formatFileSize(p.file.size)}</span>
+        </div>
+        <div class="staging-desc-field">
+          <label for="staging-caption-${i}">
+            <span>Description (optional)</span>
+            <span class="staging-counter" id="staging-counter-${i}">${p.caption.length}/140</span>
+          </label>
+          <textarea id="staging-caption-${i}" class="staging-caption-input" data-index="${i}" maxlength="140"
+            autocomplete="off" autocorrect="off" spellcheck="false"
+            placeholder="e.g. Bathroom pipe replacement — Lekki">${escapeHtml(p.caption)}</textarea>
+        </div>
       </div>`
     )
     .join("");
 
-  stagingList.querySelectorAll(".staging-caption-input").forEach((input) => {
-    input.addEventListener("input", (e) => {
-      pending[Number(e.target.dataset.index)].caption = e.target.value;
+  stagingList.querySelectorAll(".staging-caption-input").forEach((textarea) => {
+    textarea.addEventListener("input", (e) => {
+      const i = Number(e.target.dataset.index);
+      pending[i].caption = e.target.value;
+      const counter = document.getElementById(`staging-counter-${i}`);
+      counter.textContent = `${e.target.value.length}/140`;
+      counter.classList.toggle("near-limit", e.target.value.length >= 120);
     });
   });
   stagingList.querySelectorAll(".staging-remove").forEach((btn) => {
