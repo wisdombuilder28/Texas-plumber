@@ -138,6 +138,10 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 /* Section header */
 .section-header{max-width:36rem;}
 .section-header.center{margin-inline:auto;text-align:center;}
+
+.about-block{max-width:36rem;}
+.about-block h2{font-size:clamp(1.35rem,2.5vw,1.6rem);font-weight:700;margin-bottom:.85rem;}
+.about-block p{color:var(--muted-foreground);line-height:1.7;}
 .eyebrow{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.2em;color:var(--accent);}
 .section-header h2{margin-top:.75rem;font-size:clamp(1.75rem,3.5vw,2.25rem);font-weight:700;}
 .section-header .intro{margin-top:1rem;color:var(--muted-foreground);}
