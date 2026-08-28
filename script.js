@@ -43,30 +43,38 @@ const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;
 const iconTag = (name, cls="icon") => `<i data-lucide="${name}" class="${cls}"></i>`;
 
 // Render services
-document.getElementById("services-grid").innerHTML = services.map(s => `
-  <article class="service-card">
-    <div class="s-icon">${iconTag(s.icon)}</div>
-    <h3>${escape(s.title)}</h3>
-    <p>${escape(s.desc)}</p>
-    <a href="${PHONE_HREF}" class="req">Request service ${iconTag("arrow-right","icon-sm")}</a>
-  </article>
-`).join("");
+const servicesGrid = document.getElementById("services-grid");
+if (servicesGrid) {
+  servicesGrid.innerHTML = services.map(s => `
+    <article class="service-card">
+      <div class="s-icon">${iconTag(s.icon)}</div>
+      <h3>${escape(s.title)}</h3>
+      <p>${escape(s.desc)}</p>
+      <a href="${PHONE_HREF}" class="req">Request service ${iconTag("arrow-right","icon-sm")}</a>
+    </article>
+  `).join("");
+}
 
 // Why us
-document.getElementById("why-list").innerHTML = whyItems.map(i => `
-  <li class="why-item">
-    <div class="head">
-      <span class="badge">${iconTag("check","icon-sm")}</span>
-      <h3>${escape(i.t)}</h3>
-    </div>
-    <p>${escape(i.d)}</p>
-  </li>
-`).join("");
+const whyList = document.getElementById("why-list");
+if (whyList) {
+  whyList.innerHTML = whyItems.map(i => `
+    <li class="why-item">
+      <div class="head">
+        <span class="badge">${iconTag("check","icon-sm")}</span>
+        <h3>${escape(i.t)}</h3>
+      </div>
+      <p>${escape(i.d)}</p>
+    </li>
+  `).join("");
+}
 
 // Gallery — exposed on window.NDFlow so gallery-live.js can re-render this
 // same markup with live photos from Firestore, without duplicating the template.
 function renderGallery(items) {
-  document.getElementById("gallery-grid").innerHTML = items.map((g,i) => `
+  const galleryGrid = document.getElementById("gallery-grid");
+  if (!galleryGrid) return;
+  galleryGrid.innerHTML = items.map((g,i) => `
     <figure class="gallery-fig ${i===0?"large":"small"}">
       <img src="${escape(g.src)}" alt="${escape(g.alt)}" loading="lazy" width="1200" height="900" />
       ${g.caption ? `<figcaption>${escape(g.caption)}</figcaption>` : ""}
@@ -77,44 +85,53 @@ renderGallery(gallery);
 window.NDFlow = { ...(window.NDFlow || {}), renderGallery };
 
 // Reviews
-document.getElementById("reviews-grid").innerHTML = reviews.map(r => `
-  <figure class="review">
-    <div class="stars">${Array.from({length:r.stars}).map(()=>iconTag("star","icon-sm")).join("")}</div>
-    <blockquote>“${escape(r.text)}”</blockquote>
-    <figcaption>
-      <span class="avatar">${escape(r.name[0])}</span>
-      <span>
-        <span class="name">${escape(r.name)}</span>
-        <span class="city">${escape(r.city)}</span>
-      </span>
-    </figcaption>
-  </figure>
-`).join("");
+const reviewsGrid = document.getElementById("reviews-grid");
+if (reviewsGrid) {
+  reviewsGrid.innerHTML = reviews.map(r => `
+    <figure class="review">
+      <div class="stars">${Array.from({length:r.stars}).map(()=>iconTag("star","icon-sm")).join("")}</div>
+      <blockquote>“${escape(r.text)}”</blockquote>
+      <figcaption>
+        <span class="avatar">${escape(r.name[0])}</span>
+        <span>
+          <span class="name">${escape(r.name)}</span>
+          <span class="city">${escape(r.city)}</span>
+        </span>
+      </figcaption>
+    </figure>
+  `).join("");
+}
 
 // Who we serve
-document.getElementById("areas-list").innerHTML = areas.map(a => `
-  <li>${iconTag("check","icon-sm")} ${escape(a)}</li>
-`).join("");
+const areasList = document.getElementById("areas-list");
+if (areasList) {
+  areasList.innerHTML = areas.map(a => `
+    <li>${iconTag("check","icon-sm")} ${escape(a)}</li>
+  `).join("");
+}
 
 // Mobile menu
 const toggle = document.getElementById("menu-toggle");
 const mobileNav = document.getElementById("mobile-nav");
-toggle.addEventListener("click", () => {
-  const open = mobileNav.classList.toggle("open");
-  toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
-  toggle.innerHTML = open ? iconTag("x") : iconTag("menu");
-  if (window.lucide) lucide.createIcons();
-});
-mobileNav.querySelectorAll("a").forEach(a => a.addEventListener("click", () => {
-  mobileNav.classList.remove("open");
-  toggle.innerHTML = iconTag("menu");
-  if (window.lucide) lucide.createIcons();
-}));
+if (toggle && mobileNav) {
+  toggle.addEventListener("click", () => {
+    const open = mobileNav.classList.toggle("open");
+    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    toggle.innerHTML = open ? iconTag("x") : iconTag("menu");
+    if (window.lucide) lucide.createIcons();
+  });
+  mobileNav.querySelectorAll("a").forEach(a => a.addEventListener("click", () => {
+    mobileNav.classList.remove("open");
+    toggle.innerHTML = iconTag("menu");
+    if (window.lucide) lucide.createIcons();
+  }));
+}
 
 // Contact form
 const form = document.getElementById("contact-form");
 const formWrap = document.getElementById("contact-form-wrap");
-form.addEventListener("submit", (e) => {
+if (form && formWrap) {
+  form.addEventListener("submit", (e) => {
   e.preventDefault();
   formWrap.innerHTML = `
     <div class="form-success">
@@ -123,11 +140,13 @@ form.addEventListener("submit", (e) => {
       <p>Thanks — we'll call you back shortly. For emergencies, please call
         <a href="${PHONE_HREF}">${PHONE_DISPLAY}</a>.</p>
     </div>`;
-  if (window.lucide) lucide.createIcons();
-});
+    if (window.lucide) lucide.createIcons();
+  });
+}
 
 // Footer year
-document.getElementById("year").textContent = new Date().getFullYear();
+const year = document.getElementById("year");
+if (year) year.textContent = new Date().getFullYear();
 
 // Initialize icons
 if (window.lucide) lucide.createIcons();
