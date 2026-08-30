@@ -15,7 +15,7 @@
 // "not connected yet" message instead of a scary error.
 
 const admin = require("firebase-admin");
-const { google } = require("googleapis");
+const { BetaAnalyticsDataClient } = require("@google-analytics/data");
 
 function getServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -70,37 +70,32 @@ function pad2(n) {
  * correctly every January without anyone needing to edit this file.
  */
 async function fetchGa4Summary(propertyId, serviceAccount) {
-  const authClient = new google.auth.GoogleAuth({
+  const client = new BetaAnalyticsDataClient({
     credentials: {
       client_email: serviceAccount.client_email,
       private_key: serviceAccount.private_key.replace(/\\n/g, "\n"),
     },
-    scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
   });
-
-  const analyticsData = google.analyticsdata({ version: "v1beta", auth: authClient });
 
   const now = new Date();
   const startOfMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
 
-  const { data } = await analyticsData.properties.batchRunReports({
+  const [response] = await client.batchRunReports({
     property: `properties/${propertyId}`,
-    requestBody: {
-      requests: [
-        // All-time totals. GA4 simply returns whatever real data exists within this
-        // window (it won't error just because the property didn't exist in 2015).
-        {
-          dateRanges: [{ startDate: "2015-01-01", endDate: "today" }],
-          metrics: [{ name: "totalUsers" }, { name: "screenPageViews" }],
-        },
-        { dateRanges: [{ startDate: "today", endDate: "today" }], metrics: [{ name: "totalUsers" }] },
-        { dateRanges: [{ startDate: startOfMonth, endDate: "today" }], metrics: [{ name: "totalUsers" }] },
-      ],
-    },
+    requests: [
+      // All-time totals. GA4 simply returns whatever real data exists within this
+      // window (it won't error just because the property didn't exist in 2015).
+      {
+        dateRanges: [{ startDate: "2015-01-01", endDate: "today" }],
+        metrics: [{ name: "totalUsers" }, { name: "screenPageViews" }],
+      },
+      { dateRanges: [{ startDate: "today", endDate: "today" }], metrics: [{ name: "totalUsers" }] },
+      { dateRanges: [{ startDate: startOfMonth, endDate: "today" }], metrics: [{ name: "totalUsers" }] },
+    ],
   });
 
   const readMetric = (reportIndex, metricIndex) => {
-    const row = data.reports?.[reportIndex]?.rows?.[0];
+    const row = response.reports?.[reportIndex]?.rows?.[0];
     return Number(row?.metricValues?.[metricIndex]?.value ?? 0);
   };
 
