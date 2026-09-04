@@ -15,7 +15,18 @@ import {
  * Anyone not logged in gets sent straight back to the login page.
  */
 export function requireAuth(onSignedIn) {
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    const box = document.querySelector(".auth-loading");
+    if (!box) return;
+    box.innerHTML =
+      'Sign-in is taking too long. <a href="/admin/login.html" style="color:#fff;text-decoration:underline">Try signing in again</a>';
+  }, 8000);
+
   onAuthStateChanged(auth, (user) => {
+    settled = true;
+    clearTimeout(timer);
     if (!user) {
       window.location.replace("/admin/login.html");
       return;

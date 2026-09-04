@@ -6,15 +6,10 @@ wireLogout("logout-btn");
 if (window.lucide) lucide.createIcons();
 
 requireAuth((user) => {
-  document.getElementById("admin-email").textContent = user.email;
+  const emailEl = document.getElementById("admin-email");
+  if (emailEl) emailEl.textContent = user.email || "";
   loadStats(user);
 });
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&", "<": "<", ">": ">", '"': """, "'": "&#39;",
-  }[c]));
-}
 
 const STATS = [
   { key: "totalVisitors", label: "Total Visitors" },
@@ -33,55 +28,56 @@ function setStatus(text, kind) {
     return;
   }
   el.hidden = false;
-  el.className = `stats-status ${kind || ""}`;
+  el.className = "stats-status " + (kind || "");
   el.textContent = text;
 }
 
 function renderStats(state, data, reason) {
   const grid = document.getElementById("stats-grid");
+  if (!grid) return;
   grid.innerHTML = STATS.map((s) => {
     if (state === "data") {
       const value = Number(data?.[s.key] ?? 0).toLocaleString();
-      return `
-        <div class="stat-card">
-          <div class="stat-label">${s.label}</div>
-          <div class="stat-value">${value}</div>
-        </div>`;
+      return (
+        '<div class="stat-card">' +
+          '<div class="stat-label">' + s.label + "</div>" +
+          '<div class="stat-value">' + value + "</div>" +
+        "</div>"
+      );
     }
     const messages = {
-      loading: "Loading…",
+      loading: "Loading...",
       notConfigured: "Not connected yet",
       error: "Unavailable",
     };
-    return `
-      <div class="stat-card stat-empty">
-        <div class="stat-label">${s.label}</div>
-        <div class="stat-empty-msg">${messages[state] || messages.error}</div>
-      </div>`;
+    return (
+      '<div class="stat-card stat-empty">' +
+        '<div class="stat-label">' + s.label + "</div>" +
+        '<div class="stat-empty-msg">' + (messages[state] || messages.error) + "</div>" +
+      "</div>"
+    );
   }).join("");
 
   if (state === "data") {
     const generated = data?.generatedAt
-      ? `Updated ${new Date(data.generatedAt).toLocaleString("en-NG")}`
+      ? "Updated " + new Date(data.generatedAt).toLocaleString("en-NG")
       : "";
     setStatus(generated, "ok");
     return;
   }
   if (state === "loading") {
-    setStatus("Loading visitor stats…", "");
+    setStatus("Loading visitor stats...", "");
     return;
   }
   if (state === "notConfigured") {
     setStatus(
-      "Analytics isn’t connected yet. Add FIREBASE_SERVICE_ACCOUNT_JSON and GA4_PROPERTY_ID in Vercel, then redeploy. See FIREBASE_SETUP.md Part 2.",
+      "Analytics is not connected yet. Add FIREBASE_SERVICE_ACCOUNT_JSON and GA4_PROPERTY_ID in Vercel, then redeploy.",
       "warn"
     );
     return;
   }
   setStatus(
-    reason
-      ? `Couldn’t load analytics: ${reason}`
-      : "Couldn’t load analytics right now.",
+    reason ? ("Could not load analytics: " + reason) : "Could not load analytics right now.",
     "error"
   );
 }
@@ -90,15 +86,15 @@ function friendlyHttpError(status, data, rawText) {
   const payloadError = data?.error || data?.message;
   if (payloadError && payloadError !== "GA4 request failed.") return payloadError;
 
-  const blob = `${payloadError || ""} ${rawText || ""}`;
-  if (/FUNCTION_INVOCATION_FAILED/i.test(blob) || status === 500 && /server error has occurred/i.test(rawText || "")) {
-    return "the analytics server crashed — redeploy the latest api/analytics.js (it no longer depends on firebase-admin)";
+  const blob = (payloadError || "") + " " + (rawText || "");
+  if (/FUNCTION_INVOCATION_FAILED/i.test(blob) || (status === 500 && /server error has occurred/i.test(rawText || ""))) {
+    return "the analytics server crashed — redeploy the latest api/analytics.js";
   }
   if (status === 401) return "session expired — refresh and sign in again";
-  if (status === 403) return "this account isn’t in the Firestore admins collection yet";
+  if (status === 403) return "this account is not in the Firestore admins collection yet";
   if (status === 404) return "analytics endpoint not found — confirm /api/analytics.js is deployed";
   if (payloadError) return payloadError;
-  return `HTTP ${status}`;
+  return "HTTP " + status;
 }
 
 async function readResponse(res) {
@@ -120,7 +116,7 @@ async function loadStats(user, { forceRefresh = false } = {}) {
   try {
     const token = await user.getIdToken(forceRefresh);
     const res = await fetch("/api/analytics", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: "Bearer " + token },
       cache: "no-store",
     });
 

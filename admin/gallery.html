@@ -93,6 +93,14 @@
 <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<script type="module" src="/admin/js/gallery.js"></script>
+<script type="module">
+  import("/admin/js/gallery.js").catch((err) => {
+    console.error(err);
+    const box = document.querySelector(".auth-loading");
+    if (box) {
+      box.innerHTML = 'Could not start the gallery. <a href="/admin/gallery.html" style="color:#fff;text-decoration:underline">Retry</a>';
+    }
+  });
+</script>
 </body>
 </html>
