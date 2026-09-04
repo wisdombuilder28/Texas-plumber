@@ -112,24 +112,43 @@ function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
-function todayInLagos() {
+function lagosDateParts() {
   try {
-    return new Intl.DateTimeFormat("en-CA", {
+    const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: "Africa/Lagos",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).format(new Date());
-  } catch {
-    const now = new Date();
-    return `${now.getUTCFullYear()}-${pad2(now.getUTCMonth() + 1)}-${pad2(
-      now.getUTCDate()
-    )}`;
+    }).formatToParts(new Date());
+    const get = (type) => {
+      const found = parts.find((p) => p.type === type);
+      return found ? found.value : null;
+    };
+    const year = get("year");
+    const month = get("month");
+    const day = get("day");
+    if (year && month && day) {
+      return { year, month, day };
+    }
+  } catch (error) {
+    console.error("Lagos date format failed:", error);
   }
+  const now = new Date();
+  return {
+    year: String(now.getUTCFullYear()),
+    month: pad2(now.getUTCMonth() + 1),
+    day: pad2(now.getUTCDate()),
+  };
+}
+
+function todayInLagos() {
+  const { year, month, day } = lagosDateParts();
+  return year + "-" + month + "-" + day;
 }
 
 function startOfMonthLagos() {
-  return `${todayInLagos().slice(0, 8)}01`;
+  const { year, month } = lagosDateParts();
+  return year + "-" + month + "-01";
 }
 
 function base64url(input) {
@@ -356,7 +375,8 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
       body: JSON.stringify({
         requests: [
           {
-            dateRanges: [{ startDate: "2015-01-01", endDate: "today" }],
+            // All-time (GA4 relative dates avoid locale/format bugs)
+            dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }],
             metrics: [{ name: "totalUsers" }, { name: "screenPageViews" }],
           },
           {
@@ -365,7 +385,7 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
           },
           {
             dateRanges: [
-              { startDate: startOfMonthLagos(), endDate: "today" },
+              { startDate: startOfMonthLagos(), endDate: todayInLagos() },
             ],
             metrics: [{ name: "totalUsers" }],
           },
@@ -461,9 +481,18 @@ async function handle(req) {
       googleStatus === "3" ||
       googleStatus === "INVALID_ARGUMENT"
     ) {
+      const detail = error.message || "";
+      // Only blame Property ID when the message actually points at it.
+      if (/property|not found|invalid.*id/i.test(detail) && !/start_date|end_date|date/i.test(detail)) {
+        return jsonResponse(500, {
+          error:
+            "GA4 bad request. Confirm GA4_PROPERTY_ID is the numeric Property ID (Admin → Property settings), not the G-XXXXXXXXXX Measurement ID.",
+          message: detail,
+        });
+      }
       return jsonResponse(500, {
-        error:
-          "GA4 bad request. Confirm GA4_PROPERTY_ID is the numeric Property ID, not the G-XXXXXXXXXX Measurement ID.",
+        error: "GA4 bad request: " + (detail || "invalid argument from Google Analytics."),
+        message: detail,
       });
     }
 
