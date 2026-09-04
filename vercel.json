@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/analytics.js": { "maxDuration": 30 }
+    "api/analytics.js": { "maxDuration": 15 }
   },
   "rewrites": [
     { "source": "/admin", "destination": "/admin/login.html" }
@@ -11,6 +11,10 @@
       "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     },
     {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    },
+    {
       "source": "/sw.js",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
@@ -18,7 +22,7 @@
       ]
     },
     {
-      "source": "/manifest.webmanifest",
+      "source": "/manifest.json",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "Content-Type", "value": "application/manifest+json" }

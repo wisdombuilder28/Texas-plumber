@@ -24,6 +24,7 @@ Storage now has.
 ### 3. Turn on Email/Password sign-in
 1. Build → Authentication → Get started.
 2. Sign-in method tab → Email/Password → Enable → Save.
+3. On the same tab, also enable **Anonymous**. The public "Recent Work" like buttons use a silent anonymous session so each visitor can like a photo once. If this is off, likes fail even though the rest of the site works.
 
 ### 4. Create the one admin account
 1. Authentication → Users tab → Add user.
@@ -66,10 +67,10 @@ This wires up the four numbers on the Overview page: Total Visitors, Visitors To
 4. Copy the **Measurement ID** (looks like `G-XXXXXXXXXX`).
 
 ### 2. Add the Measurement ID to the site
-Open `index.html` and replace **both** occurrences of `G-XXXXXXXXXX` with the real Measurement ID from step 1 above.
+The Measurement ID is already set to `G-9LBTZMCXGV` on every public page. If you create a new GA4 property, replace **both** `G-9LBTZMCXGV` occurrences in each public HTML file (`index.html`, `about.html`, `contact.html`, `services.html`, `why-us.html`, `who-we-serve.html`, `work.html`).
 
 ### 3. Get the Property ID
-Admin → Property Settings (top of the property column) → copy the **Property ID** — a plain number like `123456789`. This is different from the Measurement ID and is what the server needs.
+Admin → Property Settings (top of the property column) → copy the **Property ID** — a plain number like `123456789`. This is different from the Measurement ID (`G-...`) and is what the server needs. Putting the G- ID here is a common reason the dashboard stays empty.
 
 ### 4. Generate a service account key
 1. Firebase Console → Project settings (gear icon) → Service accounts tab.
@@ -80,19 +81,39 @@ Admin → Property Settings (top of the property column) → copy the **Property
 2. In GA4: Admin → Property Access Management → the blue "+" → Add users.
 3. Paste that email, set role to **Viewer** → Add.
 
+Do **not** skip this. Without Viewer access, the API authenticates but GA4 returns permission denied.
+
 ### 6. Enable the Data API
 1. Go to console.cloud.google.com, make sure the project selector (top bar) shows the same project as your Firebase project.
 2. APIs & Services → Library → search "Google Analytics Data API" → Enable.
 
 ### 7. Add environment variables in Vercel
-Vercel project → Settings → Environment Variables → add two:
+Vercel project → Settings → Environment Variables → add two (Production + Preview):
 
 | Name | Value |
 |---|---|
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | The entire contents of the JSON file from step 4, pasted as-is |
-| `GA4_PROPERTY_ID` | The numeric Property ID from step 3 |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | The entire contents of the JSON file from step 4, pasted as-is (starts with `{` and includes `"private_key"`) |
+| `GA4_PROPERTY_ID` | The numeric Property ID from step 3 — digits only, no `properties/` prefix |
+
+After saving, **redeploy**. Env vars do not apply to an already-running deployment.
 
 ### 8. Redeploy
-Vercel → Deployments → redeploy the latest one (or just push any small commit) so the new environment variables take effect. The Overview page should now show real numbers within a few seconds of loading.
+Push these files (especially `api/analytics.js`) and wait for Vercel to finish. Then hard-refresh `/admin/dashboard.html`.
 
-Note: GA4 has some reporting delay (usually a few hours) — don't worry if very recent visits don't show up immediately.
+The Overview cards should show numbers. Zero is a real number — it means the API is working but GA4 has no recorded visits yet (new properties can take a few hours).
+
+---
+
+## If Overview still has no numbers
+
+The dashboard talks to `/api/analytics`. A blank/error state is almost always one of these:
+
+1. **Function crash (old code).** The previous `api/analytics.js` loaded `firebase-admin` and `@google-analytics/data` on boot and Vercel returned `FUNCTION_INVOCATION_FAILED`. The rewritten file has **no npm dependencies**. Confirm the new file is what's deployed.
+2. **Wrong Property ID.** Must be the numeric ID from GA4 Property settings, not `G-9LBTZMCXGV`.
+3. **Service account not a GA4 Viewer.** The `client_email` inside the JSON must be added under GA4 → Property Access Management.
+4. **Analytics Data API not enabled** on the same Google Cloud project.
+5. **No `admins/{yourUid}` document** in Firestore. Login can succeed and gallery can even appear to load, but the analytics endpoint will return "Admin access required".
+6. **Firestore rules not republished** after updating `firestore.rules`.
+7. **GA4 reporting delay.** Brand-new hits can take a few hours to appear. "Today" can stay at 0 until then.
+
+Vercel → your project → Logs (or the failed `/api/analytics` deployment) will show the exact error string the dashboard now surfaces on the Overview page.

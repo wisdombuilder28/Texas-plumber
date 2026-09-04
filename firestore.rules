@@ -9,8 +9,10 @@ service cloud.firestore {
 
     // One doc per admin. Doc ID = their Firebase Auth UID.
     // Created manually in the console (step 6 of FIREBASE_SETUP.md) — never through the app.
+    // Users may read *their own* admin doc so isAdmin() can use exists() without a circular rule.
     match /admins/{uid} {
-      allow read: if isAdmin();
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list: if false;
       allow write: if false;
     }
 
@@ -61,7 +63,23 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow create: if true;        // lets the public contact form submit
+      allow create: if request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'address', 'message', 'createdAt', 'source'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 120
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.phone.size() < 40
+        && request.resource.data.email is string
+        && request.resource.data.email.size() < 120
+        && request.resource.data.address is string
+        && request.resource.data.address.size() < 200
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() < 2000
+        && request.resource.data.source is string
+        && request.resource.data.source.size() < 40
+        && request.resource.data.createdAt == request.time;
       allow read, update, delete: if isAdmin();
     }
 

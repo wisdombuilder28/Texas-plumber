@@ -12,11 +12,10 @@ requireAuth((user) => {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    "&": "&", "<": "<", ">": ">", '"': """, "'": "&#39;",
   }[c]));
 }
 
-// ---------- Visitor stats ----------
 const STATS = [
   { key: "totalVisitors", label: "Total Visitors" },
   { key: "visitorsToday", label: "Visitors Today" },
@@ -24,7 +23,20 @@ const STATS = [
   { key: "pageViews", label: "Page Views" },
 ];
 
-// state: "loading" | "data" | "notConfigured" | "error"
+function setStatus(text, kind) {
+  const el = document.getElementById("stats-status");
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    el.className = "stats-status";
+    return;
+  }
+  el.hidden = false;
+  el.className = `stats-status ${kind || ""}`;
+  el.textContent = text;
+}
+
 function renderStats(state, data, reason) {
   const grid = document.getElementById("stats-grid");
   grid.innerHTML = STATS.map((s) => {
@@ -38,8 +50,8 @@ function renderStats(state, data, reason) {
     }
     const messages = {
       loading: "Loading…",
-      notConfigured: "Not connected yet — see FIREBASE_SETUP.md",
-      error: `Couldn't load right now${reason ? ` (${escapeHtml(reason)})` : ""}`,
+      notConfigured: "Not connected yet",
+      error: "Unavailable",
     };
     return `
       <div class="stat-card stat-empty">
@@ -47,31 +59,90 @@ function renderStats(state, data, reason) {
         <div class="stat-empty-msg">${messages[state] || messages.error}</div>
       </div>`;
   }).join("");
+
+  if (state === "data") {
+    const generated = data?.generatedAt
+      ? `Updated ${new Date(data.generatedAt).toLocaleString("en-NG")}`
+      : "";
+    setStatus(generated, "ok");
+    return;
+  }
+  if (state === "loading") {
+    setStatus("Loading visitor stats…", "");
+    return;
+  }
+  if (state === "notConfigured") {
+    setStatus(
+      "Analytics isn’t connected yet. Add FIREBASE_SERVICE_ACCOUNT_JSON and GA4_PROPERTY_ID in Vercel, then redeploy. See FIREBASE_SETUP.md Part 2.",
+      "warn"
+    );
+    return;
+  }
+  setStatus(
+    reason
+      ? `Couldn’t load analytics: ${reason}`
+      : "Couldn’t load analytics right now.",
+    "error"
+  );
 }
 
-async function loadStats(user) {
+function friendlyHttpError(status, data, rawText) {
+  const payloadError = data?.error || data?.message;
+  if (payloadError && payloadError !== "GA4 request failed.") return payloadError;
+
+  const blob = `${payloadError || ""} ${rawText || ""}`;
+  if (/FUNCTION_INVOCATION_FAILED/i.test(blob) || status === 500 && /server error has occurred/i.test(rawText || "")) {
+    return "the analytics server crashed — redeploy the latest api/analytics.js (it no longer depends on firebase-admin)";
+  }
+  if (status === 401) return "session expired — refresh and sign in again";
+  if (status === 403) return "this account isn’t in the Firestore admins collection yet";
+  if (status === 404) return "analytics endpoint not found — confirm /api/analytics.js is deployed";
+  if (payloadError) return payloadError;
+  return `HTTP ${status}`;
+}
+
+async function readResponse(res) {
+  const contentType = res.headers.get("content-type") || "";
+  const rawText = await res.text().catch(() => "");
+  let data = null;
+  if (contentType.includes("application/json") || rawText.trim().startsWith("{")) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
+  return { data, rawText };
+}
+
+async function loadStats(user, { forceRefresh = false } = {}) {
   renderStats("loading");
   try {
-    const token = await user.getIdToken();
+    const token = await user.getIdToken(forceRefresh);
     const res = await fetch("/api/analytics", {
       headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     });
 
-    if (res.status === 501) {
+    const { data, rawText } = await readResponse(res);
+
+    if (res.status === 501 || data?.error === "not_configured") {
       renderStats("notConfigured");
       return;
     }
 
-    const data = await res.json().catch(() => null);
+    if (res.status === 401 && !forceRefresh) {
+      return loadStats(user, { forceRefresh: true });
+    }
 
     if (!res.ok) {
-      const reason = data?.error || `HTTP ${res.status}`;
-      console.error("Analytics load failed:", reason);
+      const reason = friendlyHttpError(res.status, data, rawText);
+      console.error("Analytics load failed:", reason, data || rawText);
       renderStats("error", null, reason);
       return;
     }
 
-    renderStats("data", data);
+    renderStats("data", data || {});
   } catch (error) {
     console.error("Analytics load failed:", error);
     renderStats("error", null, "network error");

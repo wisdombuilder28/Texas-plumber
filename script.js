@@ -127,22 +127,7 @@ if (toggle && mobileNav) {
   }));
 }
 
-// Contact form
-const form = document.getElementById("contact-form");
-const formWrap = document.getElementById("contact-form-wrap");
-if (form && formWrap) {
-  form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  formWrap.innerHTML = `
-    <div class="form-success">
-      <div class="check">${iconTag("check")}</div>
-      <h3>Request received</h3>
-      <p>Thanks — we'll call you back shortly. For emergencies, please call
-        <a href="${PHONE_HREF}">${PHONE_DISPLAY}</a>.</p>
-    </div>`;
-    if (window.lucide) lucide.createIcons();
-  });
-}
+// Contact form is handled by contact-live.js so requests actually reach Firestore.
 
 // Footer year
 const year = document.getElementById("year");

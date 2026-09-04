@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v1";
+const VERSION = "ndflow-v2";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -9,11 +9,10 @@ const PRECACHE_URLS = [
   "/index.html",
   "/styles.css",
   "/script.js",
-  "/manifest.webmanifest",
+  "/manifest.json",
   OFFLINE_URL,
   "/assets/logo-mark.png",
   "/assets/logo-full.jpg",
-  "/assets/hero-plumber.jpg",
   "/assets/icon-192.png",
   "/assets/icon-512.png",
   "/assets/apple-touch-icon.png",
@@ -72,8 +71,10 @@ self.addEventListener("fetch", (event) => {
       (async () => {
         try {
           const fresh = await fetch(req);
-          const cache = await caches.open(RUNTIME);
-          cache.put("/index.html", fresh.clone());
+          if (fresh && fresh.ok) {
+            const cache = await caches.open(RUNTIME);
+            cache.put(req, fresh.clone());
+          }
           return fresh;
         } catch {
           return (

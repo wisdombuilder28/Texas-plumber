@@ -179,6 +179,14 @@ body.admin-body.auth-ready .auth-loading{display:none;}
 .stat-value{font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--brand-black);}
 .stat-empty-msg{font-size:.78rem;color:var(--muted-foreground);font-style:italic;}
 
+.stats-status{
+  font-size:.85rem;line-height:1.45;margin:0 0 1rem;padding:.75rem .9rem;
+  border-radius:.6rem;background:var(--surface-soft);color:var(--muted-foreground);
+}
+.stats-status.ok{background:var(--success-soft);color:var(--success);}
+.stats-status.warn{background:oklch(0.97 0.04 85);color:oklch(0.42 0.08 75);}
+.stats-status.error{background:var(--danger-soft);color:var(--danger);}
+
 .admin-panel{background:#fff;border:1px solid var(--border);border-radius:.75rem;padding:1.25rem;box-shadow:var(--shadow-card);}
 .admin-panel h2{font-size:1rem;margin-bottom:.85rem;}
 .admin-quick-action{

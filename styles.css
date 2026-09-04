@@ -244,6 +244,10 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .form-success h3{margin-top:1rem;font-size:1.25rem;font-weight:700;}
 .form-success p{margin-top:.5rem;max-width:24rem;font-size:.9rem;color:var(--muted-foreground);}
 .form-success a{color:var(--accent);font-weight:600;}
+.form-error-banner{
+  background:oklch(0.96 0.03 25);color:oklch(0.55 0.20 25);
+  font-size:.88rem;padding:.75rem .9rem;border-radius:.6rem;margin-bottom:1rem;
+}
 
 /* Footer */
 .site-footer{background:var(--brand-black-deep);color:rgba(255,255,255,.8);}
