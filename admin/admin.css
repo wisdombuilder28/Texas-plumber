@@ -286,6 +286,27 @@ body.admin-body.auth-ready .auth-loading{display:none;}
   position:absolute;bottom:.5rem;right:.5rem;left:.5rem;justify-content:center;
   background:oklch(0.15 0.006 260 / 0.75);color:#fff;backdrop-filter:blur(2px);
 }
+.gallery-admin-item .feature-btn{
+  position:absolute;top:.5rem;right:.5rem;left:.5rem;
+  display:inline-flex;align-items:center;justify-content:center;gap:.35rem;
+  background:oklch(0.15 0.006 260 / 0.78);color:#fff;
+  font-weight:600;font-size:.75rem;padding:.4rem .55rem;border-radius:.45rem;
+  backdrop-filter:blur(2px);z-index:1;
+}
+.gallery-admin-item.is-featured .feature-btn{
+  background:var(--brand-gold);color:oklch(0.15 0.01 260);
+}
+.gallery-admin-item.is-featured{
+  outline:2px solid var(--brand-gold);outline-offset:0;
+}
+.gallery-admin-item.is-featured .feature-btn .icon-sm{fill:currentColor;}
+.gallery-admin-item figcaption{top:2.6rem;}
+.staging-featured{
+  display:flex;align-items:center;gap:.5rem;
+  font-size:.85rem;font-weight:600;color:var(--brand-black);
+  margin-top:.15rem;cursor:pointer;user-select:none;
+}
+.staging-featured input{width:1rem;height:1rem;accent-color:var(--brand-gold);}
 /* Hover-to-reveal only on real mouse pointers -- touch devices always show the delete button */
 @media (hover:hover) and (pointer:fine){
   .gallery-admin-item .delete-btn{opacity:0;transition:opacity .15s ease;}

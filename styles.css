@@ -185,6 +185,12 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
   .gallery-fig.large{grid-column:span 4;grid-row:span 2;}
   .gallery-fig.small{grid-column:span 2;grid-row:span 1;}
 }
+.gallery-more{margin-top:1.5rem;text-align:center;}
+.gallery-more a{
+  display:inline-flex;align-items:center;gap:.4rem;
+  font-weight:600;font-size:.95rem;color:var(--foreground);
+}
+.gallery-more a:hover{color:var(--accent);}
 
 /* Reviews */
 .reviews{background:var(--surface-soft);}

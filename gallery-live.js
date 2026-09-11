@@ -1,37 +1,58 @@
 // gallery-live.js
-// Keeps the public gallery section in sync with Firestore in real time —
-// no refresh needed after the admin uploads or deletes a photo.
-// If Firebase isn't configured yet, or the live connection fails, the static
-// photos already rendered by script.js simply stay on screen. This file never
-// blocks or breaks the page.
+// Homepage "Featured work" sample. Only photos the admin has marked featured
+// appear here. The full gallery lives on /work.html (work-live.js).
 import { db } from "./firebase-config.js";
 import {
   collection,
   query,
-  orderBy,
+  where,
   onSnapshot,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
+const HOME_LIMIT = 6;
+
+function setFeaturedSection(items) {
+  const section = document.getElementById("gallery");
+  if (!section) return;
+  if (!items.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  window.NDFlow?.renderGallery(items);
+  if (window.lucide) lucide.createIcons();
+}
+
 try {
-  const galleryQuery = query(collection(db, "gallery"), orderBy("order", "desc"));
+  // Equality-only query — no composite index required. Older documents that
+  // never got a `featured` field are excluded until the admin turns it on.
+  const featuredQuery = query(
+    collection(db, "gallery"),
+    where("featured", "==", true)
+  );
   onSnapshot(
-    galleryQuery,
+    featuredQuery,
     (snapshot) => {
-      if (snapshot.empty) return; // nothing uploaded yet — keep the default photos
-      const items = snapshot.docs.map((docSnap) => {
-        const data = docSnap.data();
-        return {
-          src: data.imageData,
-          alt: data.alt || "N.D. Flow Plumbing Co. completed project",
-          caption: data.caption || "",
-        };
-      });
-      window.NDFlow?.renderGallery(items);
+      const items = snapshot.docs
+        .map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            src: data.imageData,
+            alt: data.alt || "N.D. Flow Plumbing Co. completed project",
+            caption: data.caption || "",
+            order: typeof data.order === "number" ? data.order : 0,
+          };
+        })
+        .sort((a, b) => b.order - a.order)
+        .slice(0, HOME_LIMIT);
+      setFeaturedSection(items);
     },
     (error) => {
-      console.warn("Live gallery unavailable, showing default photos:", error);
+      console.warn("Live featured gallery unavailable:", error);
+      setFeaturedSection([]);
     }
   );
 } catch (error) {
-  console.warn("Live gallery not started:", error);
+  console.warn("Live featured gallery not started:", error);
+  setFeaturedSection([]);
 }

@@ -9,7 +9,18 @@
   // 1. Register the service worker (https only, not on local dev).
   if ("serviceWorker" in navigator && !isLocalDev && location.protocol === "https:") {
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("/sw.js").catch(function (err) {
+      navigator.serviceWorker.register("/sw.js").then(function (reg) {
+        if (reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
+        reg.addEventListener("updatefound", function () {
+          var worker = reg.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", function () {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              worker.postMessage("SKIP_WAITING");
+            }
+          });
+        });
+      }).catch(function (err) {
         console.warn("Service worker registration failed:", err);
       });
     });

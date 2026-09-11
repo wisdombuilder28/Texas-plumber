@@ -23,13 +23,6 @@ const whyItems = [
   { t: "Customer satisfaction", d: "Your satisfaction is the job — we're not finished until the work is done right and you're happy." },
 ];
 
-const gallery = [
-  { src: "assets/gallery-pipes.jpg", alt: "Newly installed copper plumbing manifold" },
-  { src: "assets/gallery-waterheater.jpg", alt: "Wall-mounted tankless water heater installation" },
-  { src: "assets/gallery-shower.jpg", alt: "Modern walk-in shower installation" },
-  { src: "assets/gallery-drain.jpg", alt: "Professional drain camera inspection" },
-];
-
 const reviews = [
   { name: "Chidinma A.", city: "Homeowner", stars: 5, text: "Called them for a burst pipe emergency and they arrived within the hour. Professional, honest, and the work has held up perfectly." },
   { name: "Emeka O.", city: "Business Owner", stars: 5, text: "N.D. Flow handled the plumbing for our new office fit-out. On schedule, tidy work, and they explained every step clearly." },
@@ -81,7 +74,6 @@ function renderGallery(items) {
     </figure>
   `).join("");
 }
-renderGallery(gallery);
 window.NDFlow = { ...(window.NDFlow || {}), renderGallery };
 
 // Reviews

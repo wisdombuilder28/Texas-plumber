@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v2";
+const VERSION = "ndflow-v3";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -45,17 +45,17 @@ self.addEventListener("message", (event) => {
 });
 
 function isBypassed(url) {
-  // Never cache the admin area, APIs, analytics or Firebase traffic.
+  // Never cache admin, APIs, live JS modules, analytics, or Firebase.
   return (
     url.pathname.startsWith("/admin") ||
     url.pathname.startsWith("/api") ||
+    url.pathname.endsWith("-live.js") ||
+    url.pathname.endsWith("firebase-config.js") ||
     /googleapis|gstatic\.com\/firebasejs|firebaseio|firebasestorage|firestore|identitytoolkit|googletagmanager|google-analytics/.test(
       url.host + url.pathname,
     )
   );
 }
-
-const STATIC_DESTINATIONS = ["style", "script", "image", "font"];
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
@@ -65,12 +65,11 @@ self.addEventListener("fetch", (event) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
   if (isBypassed(url)) return;
 
-  // HTML navigations: network first, fall back to cache, then offline page.
   if (req.mode === "navigate") {
     event.respondWith(
       (async () => {
         try {
-          const fresh = await fetch(req);
+          const fresh = await fetch(req, { cache: "no-store" });
           if (fresh && fresh.ok) {
             const cache = await caches.open(RUNTIME);
             cache.put(req, fresh.clone());
@@ -89,8 +88,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache first, refresh in the background.
-  if (url.origin === self.location.origin && STATIC_DESTINATIONS.includes(req.destination)) {
+  // JS/CSS: network first so a deploy is not stuck on an old cached file.
+  if (url.origin === self.location.origin && (req.destination === "script" || req.destination === "style")) {
+    event.respondWith(
+      (async () => {
+        try {
+          const res = await fetch(req);
+          if (res && res.ok) {
+            const cache = await caches.open(RUNTIME);
+            cache.put(req, res.clone());
+          }
+          return res;
+        } catch {
+          return (await caches.match(req)) || Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  if (url.origin === self.location.origin && req.destination === "image") {
     event.respondWith(
       (async () => {
         const cached = await caches.match(req);
@@ -109,7 +126,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cross-origin (fonts, CDN): stale-while-revalidate.
   if (url.origin !== self.location.origin) {
     event.respondWith(
       (async () => {
