@@ -7,6 +7,7 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   serverTimestamp,
@@ -47,7 +48,7 @@ const stagingCount = document.getElementById("staging-count");
 const stagingCancelBtn = document.getElementById("staging-cancel");
 const stagingConfirmBtn = document.getElementById("staging-confirm");
 
-// Files the admin has picked but not yet confirmed -- { file, previewUrl, caption }
+// Files the admin has picked but not yet confirmed -- { file, previewUrl, caption, featured }
 let pending = [];
 
 function showMessage(text, kind = "error") {
@@ -58,7 +59,11 @@ function showMessage(text, kind = "error") {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
   }[c]));
 }
 
@@ -103,10 +108,15 @@ function renderGrid(snapshot) {
   grid.innerHTML = snapshot.docs
     .map((docSnap) => {
       const d = docSnap.data();
+      const featured = d.featured === true;
       return `
-      <figure class="gallery-admin-item">
+      <figure class="gallery-admin-item${featured ? " is-featured" : ""}">
         <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
         ${d.caption ? `<figcaption>${escapeHtml(d.caption)}</figcaption>` : ""}
+        <button type="button" class="feature-btn" data-id="${docSnap.id}" data-featured="${featured ? "1" : "0"}" aria-pressed="${featured ? "true" : "false"}">
+          <i data-lucide="star" class="icon-sm"></i>
+          ${featured ? "On homepage" : "Show on homepage"}
+        </button>
         <button type="button" class="btn-danger delete-btn" data-id="${docSnap.id}">
           <i data-lucide="trash-2" class="icon-sm"></i> Delete
         </button>
@@ -116,6 +126,11 @@ function renderGrid(snapshot) {
 
   grid.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => deletePhoto(btn.dataset.id, btn));
+  });
+  grid.querySelectorAll(".feature-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      toggleFeatured(btn.dataset.id, btn.dataset.featured === "1", btn);
+    });
   });
   if (window.lucide) lucide.createIcons();
 }
@@ -130,6 +145,24 @@ async function deletePhoto(id, btn) {
   } catch (error) {
     console.error("Delete failed:", error);
     showMessage(`Couldn't delete that photo: ${friendlyFirestoreError(error)}`);
+    btn.disabled = false;
+  }
+}
+
+async function toggleFeatured(id, currentlyFeatured, btn) {
+  btn.disabled = true;
+  try {
+    await updateDoc(doc(db, "gallery", id), {
+      featured: !currentlyFeatured,
+      updatedAt: serverTimestamp(),
+    });
+    showMessage(
+      currentlyFeatured ? "Removed from the homepage. It stays in Recent Work." : "Now showing on the homepage.",
+      "success"
+    );
+  } catch (error) {
+    console.error("Featured toggle failed:", error);
+    showMessage(`Couldn't update homepage status: ${friendlyFirestoreError(error)}`);
     btn.disabled = false;
   }
 }
@@ -166,7 +199,7 @@ function stageFiles(fileList) {
       showMessage(`${file.name}: that file is too large to process (max 20MB).`);
       continue;
     }
-    pending.push({ file, previewUrl: URL.createObjectURL(file), caption: "" });
+    pending.push({ file, previewUrl: URL.createObjectURL(file), caption: "", featured: false });
   }
   renderStaging();
 }
@@ -210,6 +243,10 @@ function renderStaging() {
             autocomplete="off" autocorrect="off" spellcheck="false"
             placeholder="e.g. Bathroom pipe replacement — Lekki">${escapeHtml(p.caption)}</textarea>
         </div>
+        <label class="staging-featured">
+          <input type="checkbox" class="staging-featured-input" data-index="${i}" ${p.featured ? "checked" : ""} />
+          <span>Show on homepage</span>
+        </label>
       </div>`
     )
     .join("");
@@ -221,6 +258,12 @@ function renderStaging() {
       const counter = document.getElementById(`staging-counter-${i}`);
       counter.textContent = `${e.target.value.length}/140`;
       counter.classList.toggle("near-limit", e.target.value.length >= 120);
+    });
+  });
+  stagingList.querySelectorAll(".staging-featured-input").forEach((checkbox) => {
+    checkbox.addEventListener("change", (e) => {
+      const i = Number(e.target.dataset.index);
+      pending[i].featured = e.target.checked;
     });
   });
   stagingList.querySelectorAll(".staging-remove").forEach((btn) => {
@@ -303,7 +346,7 @@ async function uploadStaged() {
   uploadLabel.classList.add("disabled");
 
   for (let i = 0; i < items.length; i++) {
-    const { file: original, previewUrl, caption } = items[i];
+    const { file: original, previewUrl, caption, featured } = items[i];
     const label = `(${i + 1}/${items.length}) ${original.name}`;
     const trimmedCaption = caption.trim();
 
@@ -327,6 +370,7 @@ async function uploadStaged() {
           alt: trimmedCaption || DEFAULT_ALT,
           sizeBytes: compressed.size,
           order: Date.now(),
+          featured: featured === true,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
@@ -350,7 +394,7 @@ async function uploadStaged() {
   fileInput.disabled = false;
   uploadLabel.classList.remove("disabled");
   fileInput.value = "";
-  if (messageEl.hidden) showMessage("Upload complete. The public gallery updates automatically.", "success");
+  if (messageEl.hidden) showMessage("Upload complete. Recent Work updates automatically. Homepage only shows photos marked “Show on homepage”.", "success");
 }
 
 stagingConfirmBtn.addEventListener("click", uploadStaged);
