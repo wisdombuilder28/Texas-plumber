@@ -12,6 +12,7 @@ const services = [
   { icon: "home", title: "Toilet Installation & Repair", desc: "Efficient toilet installation and repair — running, leaking or blocked toilets fixed properly with a lasting seal." },
   { icon: "siren", title: "Emergency Plumbing", desc: "24/7 emergency response for burst pipes, flooding and sudden leaks — we answer the call and get there fast." },
   { icon: "settings", title: "Maintenance Services", desc: "Scheduled plumbing maintenance to catch small issues early — keeping pipes and fixtures running smoothly year-round." },
+  { icon: "globe", title: "Diaspora & Remote Projects", desc: "Property owners living abroad can instruct us from anywhere. We quote clearly, send photo updates, and finish the work on the ground in Nigeria." },
 ];
 
 const whyItems = [
@@ -20,7 +21,7 @@ const whyItems = [
   { t: "Fair, transparent pricing", d: "Straightforward quotes agreed before we start, so you always know the cost — no inflated invoices." },
   { t: "Reliable workmanship", d: "Every job is tested and finished to a high standard, backed by our commitment to lasting quality." },
   { t: "Fast response", d: "We show up when we say we will, with rapid dispatch for emergencies — day or night." },
-  { t: "Customer satisfaction", d: "Your satisfaction is the job — we're not finished until the work is done right and you're happy." },
+  { t: "Diaspora-friendly", d: "Overseas clients get the same standard — clear quotes, photo updates, and WhatsApp reporting so you can run a job without being on site." },
 ];
 
 const reviews = [
@@ -30,7 +31,7 @@ const reviews = [
   { name: "Tunde K.", city: "Property Manager", stars: 5, text: "We use them for maintenance across several properties. Reliable, fair pricing, and always reachable when something urgent comes up." },
 ];
 
-const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship"];
+const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship","Diaspora-owned properties","International clients with projects in Nigeria"];
 
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconTag = (name, cls="icon") => `<i data-lucide="${name}" class="${cls}"></i>`;

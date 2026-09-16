@@ -135,6 +135,13 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .trust-icon{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:.4rem;background:oklch(0.16 0.006 260 / .05);color:var(--primary);flex-shrink:0;}
 .trust-item span{font-size:.9rem;font-weight:600;color:rgba(0,0,0,.9);}
 
+/* Reach / positioning band */
+.reach-band{background:var(--brand-black-deep);color:#fff;border-bottom:1px solid rgba(255,255,255,.08);}
+.reach-inner{padding:3rem 0;max-width:42rem;}
+.reach-band .eyebrow{color:var(--accent);}
+.reach-band h2{color:#fff;margin-top:.75rem;font-size:clamp(1.5rem,3vw,2rem);font-weight:800;line-height:1.2;}
+.reach-band p{margin-top:1rem;color:rgba(255,255,255,.78);font-size:1.05rem;line-height:1.6;}
+
 /* Section header */
 .section-header{max-width:36rem;}
 .section-header.center{margin-inline:auto;text-align:center;}
