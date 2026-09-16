@@ -68,9 +68,10 @@ if (whyList) {
 function renderGallery(items) {
   const galleryGrid = document.getElementById("gallery-grid");
   if (!galleryGrid) return;
-  galleryGrid.innerHTML = items.map((g,i) => `
-    <figure class="gallery-fig ${i===0?"large":"small"}">
-      <img src="${escape(g.src)}" alt="${escape(g.alt)}" loading="lazy" width="1200" height="900" />
+  const shapes = ["portrait", "square", "square", "portrait", "wide", "portrait"];
+  galleryGrid.innerHTML = items.map((g, i) => `
+    <figure class="gallery-fig ${shapes[i % shapes.length]}">
+      <img src="${escape(g.src)}" alt="${escape(g.alt)}" loading="lazy" width="900" height="1100" />
       ${g.caption ? `<figcaption>${escape(g.caption)}</figcaption>` : ""}
     </figure>
   `).join("");
