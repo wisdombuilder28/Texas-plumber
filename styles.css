@@ -136,7 +136,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .trust-item span{font-size:.9rem;font-weight:600;color:rgba(0,0,0,.9);}
 
 /* Reach / positioning band */
-.reach-band{background:var(--brand-black-deep);color:#fff;border-bottom:1px solid rgba(255,255,255,.08);}
+.reach-band{background:var(--brand-black-deep);color:#fff;border-bottom:1px solid rgba(255,255,255,.08);text-align:center;}
 .reach-inner{padding:3rem 0;max-width:42rem;}
 .reach-band .eyebrow{color:var(--accent);}
 .reach-band h2{color:#fff;margin-top:.75rem;font-size:clamp(1.5rem,3vw,2rem);font-weight:800;line-height:1.2;}
