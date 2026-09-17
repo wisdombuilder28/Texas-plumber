@@ -3,7 +3,7 @@ const PHONE_DISPLAY = "+234 901 683 6967";
 const PHONE_HREF = "tel:+2349016836967";
 
 const services = [
-  { icon: "wrench", title: "General Plumbing", desc: "Dependable plumbing installation, repair and upkeep for homes and businesses — done right the first time." },
+  { icon: "wrench", title: "General Plumbing", desc: "Dependable plumbing installation, repair and upkeep — done right the first time." },
   { icon: "waves", title: "Pipe Installation", desc: "Durable pipe installation and replacement using quality materials and clean, code-compliant workmanship." },
   { icon: "search", title: "Leak Detection & Repair", desc: "Fast, accurate leak detection and permanent repairs — protecting your walls, floors and foundation from hidden damage." },
   { icon: "bath", title: "Bathroom & Kitchen Plumbing", desc: "Complete bathroom and kitchen plumbing — sinks, taps, showers and fittings installed to a clean, lasting finish." },
@@ -12,11 +12,11 @@ const services = [
   { icon: "home", title: "Toilet Installation & Repair", desc: "Efficient toilet installation and repair — running, leaking or blocked toilets fixed properly with a lasting seal." },
   { icon: "siren", title: "Emergency Plumbing", desc: "24/7 emergency response for burst pipes, flooding and sudden leaks — we answer the call and get there fast." },
   { icon: "settings", title: "Maintenance Services", desc: "Scheduled plumbing maintenance to catch small issues early — keeping pipes and fixtures running smoothly year-round." },
-  { icon: "globe", title: "Diaspora & Remote Projects", desc: "Property owners living abroad can instruct us from anywhere. We quote clearly, send photo updates, and finish the work on the ground in Nigeria." },
+  { icon: "globe", title: "Diaspora & Global Projects", desc: "Global clients and property owners living abroad can instruct us from anywhere. We quote clearly, send photo updates, and finish the work on the ground in Nigeria." },
 ];
 
 const whyItems = [
-  { t: "Professional & courteous", d: "Trained technicians who respect your home or business — clean work, proper tools, no shortcuts." },
+  { t: "Professional & courteous", d: "Trained technicians who respect your property — clean work, proper tools, no shortcuts." },
   { t: "Clear communication", d: "Honest explanations and upfront pricing before any work begins — no jargon, no surprises." },
   { t: "Fair, transparent pricing", d: "Straightforward quotes agreed before we start, so you always know the cost — no inflated invoices." },
   { t: "Reliable workmanship", d: "Every job is tested and finished to a high standard, backed by our commitment to lasting quality." },
@@ -31,7 +31,7 @@ const reviews = [
   { name: "Tunde K.", city: "Property Manager", stars: 5, text: "We use them for maintenance across several properties. Reliable, fair pricing, and always reachable when something urgent comes up." },
 ];
 
-const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship","Diaspora-owned properties","International clients with projects in Nigeria"];
+const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship","Diaspora-owned properties","Global clients with projects in Nigeria"];
 
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconTag = (name, cls="icon") => `<i data-lucide="${name}" class="${cls}"></i>`;
