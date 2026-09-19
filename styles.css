@@ -212,7 +212,6 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .gallery-fig.portrait{aspect-ratio:3 / 4;}
 .gallery-fig.wide{aspect-ratio:4 / 3;}
 .gallery-fig img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .5s ease;}
-.gallery-fig:hover img{transform:scale(1.05);}
 .gallery-fig figcaption{
   position:absolute;left:0;right:0;bottom:0;padding:1.35rem .85rem .7rem;
   background:linear-gradient(to top, oklch(0.1 0.006 260 / 0.85), transparent);
@@ -468,6 +467,13 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
   animation-delay:.1s;
 }
 
+/* Applied by motion.js the instant an element is discovered, so it is
+   reliably hidden/offset before the reveal — not just whenever the
+   IntersectionObserver happens to fire. .motion-play (added on
+   intersect) animates from exactly this state, so there's no flash of
+   already-visible content and no jump. If JS never runs, this class is
+   never added, so content stays visible by default (no-JS fallback). */
+.motion-init{opacity:0;transform:translateY(40px);}
 .motion-play{
   animation:rise .9s cubic-bezier(.22,1,.36,1) both;
 }
@@ -479,10 +485,20 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .review{transition:transform .28s ease, box-shadow .28s ease;}
 .review:hover{transform:translateY(-5px);box-shadow:0 14px 28px -16px oklch(0.1 0.006 260 / .3);}
 
+/* Touch devices never trigger :hover, so the lift/zoom above is
+   invisible on a phone. This gives the same feedback on tap, scoped to
+   devices that can't hover so desktop behavior is untouched. */
+@media (hover:none){
+  .gallery-fig:active{transform:translateY(-4px);box-shadow:0 14px 26px -16px oklch(0.1 0.006 260 / .4);}
+  .gallery-fig:active img{transform:scale(1.05);}
+  .review:active{transform:translateY(-3px);box-shadow:0 10px 22px -16px oklch(0.1 0.006 260 / .25);}
+  .work-item:active{transform:translateY(-2px);box-shadow:0 4px 8px oklch(0.1 0.006 260/0.08),0 14px 28px -16px oklch(0.1 0.006 260/0.22);}
+}
+
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto;}
   .hero-bg,.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card,
-  .trust-item,.reach-inner,.motion-play,.gallery-fig,.service-card,.why-item,
+  .trust-item,.reach-inner,.motion-play,.motion-init,.gallery-fig,.service-card,.why-item,
   .work-item,.review,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before{
     animation:none !important;
     transition:none !important;

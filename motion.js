@@ -41,6 +41,7 @@
         if (el.dataset.motionWatched === "1") return;
         el.dataset.motionWatched = "1";
         el.style.animationDelay = `${(index % 4) * 90}ms`;
+        el.classList.add("motion-init");
         io.observe(el);
       });
     });
