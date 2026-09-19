@@ -499,10 +499,58 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
   html{scroll-behavior:auto;}
   .hero-bg,.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card,
   .trust-item,.reach-inner,.motion-play,.motion-init,.gallery-fig,.service-card,.why-item,
-  .work-item,.review,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before{
+  .work-item,.review,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before,
+  .contact-chevron,.contact-fab{
     animation:none !important;
     transition:none !important;
     opacity:1 !important;
     transform:none !important;
   }
 }
+
+/* ---------- Contact channel picker (Call / WhatsApp) ---------- */
+.contact-choice{position:relative;display:inline-flex;}
+.contact-chevron{margin-left:.35rem;width:14px;height:14px;transition:transform .18s ease;}
+.contact-choice a[aria-expanded="true"] .contact-chevron{transform:rotate(180deg);}
+
+.contact-menu{
+  position:absolute;top:calc(100% + .5rem);left:0;z-index:70;
+  display:flex;flex-direction:column;gap:.2rem;min-width:10.5rem;
+  padding:.4rem;border-radius:.75rem;
+  background:var(--card);border:1px solid var(--border);
+  box-shadow:0 18px 40px -14px oklch(0.1 0.006 260 / .35);
+}
+.contact-menu[hidden]{display:none;}
+.header-cta-compact + .contact-menu,
+.header-cta .contact-menu{left:auto;right:0;}
+
+.contact-option{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.6rem .7rem;border-radius:.55rem;
+  color:var(--foreground);font-size:.9rem;font-weight:600;
+  transition:background .15s ease;
+}
+.contact-option:hover{background:var(--secondary);}
+.contact-option .icon-sm{color:var(--muted-foreground);}
+.contact-option-wa .icon-sm{color:#25D366;}
+
+/* Floating contact button — hidden until the visitor scrolls, then
+   sits at the side of the screen. Brand gold, not WhatsApp green,
+   since it represents both channels; green is reserved for the
+   WhatsApp row once the menu is open. */
+.contact-fab{
+  position:fixed;right:1.1rem;bottom:1.1rem;z-index:90;
+  opacity:0;transform:translateY(12px) scale(.92);pointer-events:none;
+  transition:opacity .25s ease,transform .25s ease;
+}
+.contact-fab.is-visible{opacity:1;transform:none;pointer-events:auto;}
+.contact-fab-trigger{
+  display:grid;place-items:center;width:3.3rem;height:3.3rem;border-radius:9999px;
+  background:var(--brand-gold);color:var(--accent-foreground);border:0;
+  box-shadow:0 14px 30px -10px oklch(0.1 0.006 260 / .5);
+  transition:background .18s ease,transform .18s ease;
+}
+.contact-fab-trigger:hover{background:var(--brand-gold-hover);transform:scale(1.06);}
+.contact-fab-trigger:active{transform:scale(.96);}
+.contact-fab-trigger svg{width:24px;height:24px;}
+.contact-fab-menu{top:auto;bottom:calc(100% + .6rem);left:auto;right:0;}
