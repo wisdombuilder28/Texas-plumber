@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v7";
+const VERSION = "ndflow-v8";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -8,6 +8,7 @@ const PRECACHE_URLS = [
   "/",
   "/index.html",
   "/styles.css",
+  "/motion.js",
   "/script.js",
   "/manifest.json",
   OFFLINE_URL,
