@@ -178,17 +178,6 @@
   const fabTrigger = fab.querySelector(".contact-fab-trigger");
   fabTrigger.addEventListener("click", () => openTrigger(fabTrigger, fabMenu));
 
-  let fabVisible = false;
-  const syncFab = () => {
-    const shouldShow = window.scrollY > 400;
-    if (shouldShow === fabVisible) return;
-    fabVisible = shouldShow;
-    fab.classList.toggle("is-visible", shouldShow);
-    if (!shouldShow) closeOpen();
-  };
-  window.addEventListener("scroll", syncFab, { passive: true });
-  syncFab();
-
   document.addEventListener("click", (e) => {
     if (openMenu && !openMenu.trigger.parentNode.contains(e.target)) closeOpen();
   });

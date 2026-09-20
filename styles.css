@@ -540,10 +540,8 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
    WhatsApp row once the menu is open. */
 .contact-fab{
   position:fixed;right:1.1rem;bottom:1.1rem;z-index:90;
-  opacity:0;transform:translateY(12px) scale(.92);pointer-events:none;
-  transition:opacity .25s ease,transform .25s ease;
+  animation:rise .6s cubic-bezier(.22,1,.36,1) both;
 }
-.contact-fab.is-visible{opacity:1;transform:none;pointer-events:auto;}
 .contact-fab-trigger{
   display:grid;place-items:center;width:3.3rem;height:3.3rem;border-radius:9999px;
   background:var(--brand-gold);color:var(--accent-foreground);border:0;

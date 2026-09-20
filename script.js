@@ -44,7 +44,7 @@ if (servicesGrid) {
       <div class="s-icon">${iconTag(s.icon)}</div>
       <h3>${escape(s.title)}</h3>
       <p>${escape(s.desc)}</p>
-      <a href="${PHONE_HREF}" class="req">Request service ${iconTag("arrow-right","icon-sm")}</a>
+      <a href="https://wa.me/2349016836967?text=${encodeURIComponent("Hi, I'd like to enquire about " + s.title + ".")}" class="req" target="_blank" rel="noopener">Request service ${iconTag("arrow-right","icon-sm")}</a>
     </article>
   `).join("");
 }
