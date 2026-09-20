@@ -74,7 +74,9 @@
 /* ---------- Contact channel picker (Call / WhatsApp) ----------
    Deliberately a separate top-level IIFE from the block above: the
    reduced-motion check up there is about decorative motion and must
-   not gate this — it's a functional control, everyone needs it. */
+   not gate this — it's a functional control, everyone needs it.
+   Built with createElement/textContent throughout — no innerHTML,
+   matching the note at the top of this file. */
 (() => {
   "use strict";
   const PHONE_TEL = "tel:+2349016836967";
@@ -96,17 +98,37 @@
     openMenu = null;
   };
 
+  const icon = (name, cls) => {
+    const el = document.createElement("i");
+    el.setAttribute("data-lucide", name);
+    if (cls) el.className = cls;
+    return el;
+  };
+
+  const makeOption = (channel, href, label) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.setAttribute("role", "menuitem");
+    a.className = channel === "whatsapp" ? "contact-option contact-option-wa" : "contact-option";
+    a.dataset.channel = channel;
+    if (channel === "whatsapp") {
+      a.target = "_blank";
+      a.rel = "noopener";
+    }
+    a.appendChild(icon(channel === "call" ? "phone" : "message-circle", "icon-sm"));
+    const span = document.createElement("span");
+    span.textContent = label;
+    a.appendChild(span);
+    return a;
+  };
+
   const buildMenu = (source) => {
     const menu = document.createElement("div");
     menu.className = "contact-menu";
     menu.setAttribute("role", "menu");
     menu.hidden = true;
-    menu.innerHTML =
-      `<a href="${PHONE_TEL}" role="menuitem" class="contact-option" data-channel="call">` +
-      `<i data-lucide="phone" class="icon-sm"></i><span>Call</span></a>` +
-      `<a href="${WA_URL}" role="menuitem" class="contact-option contact-option-wa" data-channel="whatsapp" target="_blank" rel="noopener">` +
-      `<i data-lucide="message-circle" class="icon-sm"></i><span>WhatsApp</span></a>`;
-    menu.querySelectorAll("[data-channel]").forEach((a) => {
+    [makeOption("call", PHONE_TEL, "Call"), makeOption("whatsapp", WA_URL, "WhatsApp")].forEach((a) => {
+      menu.appendChild(a);
       a.addEventListener("click", () => {
         track(a.dataset.channel, source);
         closeOpen();
@@ -140,10 +162,7 @@
 
     anchor.setAttribute("aria-haspopup", "true");
     anchor.setAttribute("aria-expanded", "false");
-    anchor.insertAdjacentHTML(
-      "beforeend",
-      '<i data-lucide="chevron-down" class="contact-chevron"></i>'
-    );
+    anchor.appendChild(icon("chevron-down", "contact-chevron"));
 
     const menu = buildMenu("inline");
     wrapper.appendChild(menu);
@@ -163,19 +182,23 @@
     });
   });
 
-  // Floating contact button, revealed once the visitor has scrolled.
+  // Floating contact button, always visible.
   const fab = document.createElement("div");
   fab.className = "contact-fab";
-  fab.innerHTML =
-    '<button type="button" class="contact-fab-trigger" aria-haspopup="true" ' +
-    'aria-expanded="false" aria-label="Contact us — call or WhatsApp">' +
-    '<i data-lucide="message-circle"></i></button>';
+  const fabTrigger = document.createElement("button");
+  fabTrigger.type = "button";
+  fabTrigger.className = "contact-fab-trigger";
+  fabTrigger.setAttribute("aria-haspopup", "true");
+  fabTrigger.setAttribute("aria-expanded", "false");
+  fabTrigger.setAttribute("aria-label", "Contact us — call or WhatsApp");
+  fabTrigger.appendChild(icon("message-circle"));
+  fab.appendChild(fabTrigger);
+
   const fabMenu = buildMenu("fab");
   fabMenu.classList.add("contact-fab-menu");
   fab.appendChild(fabMenu);
   document.body.appendChild(fab);
 
-  const fabTrigger = fab.querySelector(".contact-fab-trigger");
   fabTrigger.addEventListener("click", () => openTrigger(fabTrigger, fabMenu));
 
   document.addEventListener("click", (e) => {
