@@ -237,9 +237,9 @@ function renderStaging() {
         <div class="staging-desc-field">
           <label for="staging-caption-${i}">
             <span>Description (optional)</span>
-            <span class="staging-counter" id="staging-counter-${i}">${p.caption.length}/140</span>
+            <span class="staging-counter" id="staging-counter-${i}">${p.caption.length}/300</span>
           </label>
-          <textarea id="staging-caption-${i}" class="staging-caption-input" data-index="${i}" maxlength="140"
+          <textarea id="staging-caption-${i}" class="staging-caption-input" data-index="${i}" maxlength="300"
             autocomplete="off" autocorrect="off" spellcheck="false"
             placeholder="e.g. Bathroom pipe replacement — Lekki">${escapeHtml(p.caption)}</textarea>
         </div>
@@ -256,7 +256,7 @@ function renderStaging() {
       const i = Number(e.target.dataset.index);
       pending[i].caption = e.target.value;
       const counter = document.getElementById(`staging-counter-${i}`);
-      counter.textContent = `${e.target.value.length}/140`;
+      counter.textContent = `${e.target.value.length}/300`;
       counter.classList.toggle("near-limit", e.target.value.length >= 120);
     });
   });
