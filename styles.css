@@ -171,8 +171,10 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .services-grid{margin-top:3rem;display:grid;gap:1.25rem;}
 @media(min-width:640px){.services-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(min-width:1024px){.services-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
-.service-card{border:1px solid var(--border);background:var(--card);border-radius:.75rem;padding:1.5rem;box-shadow:var(--shadow-card);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;}
-.service-card:hover{transform:translateY(-4px);border-color:oklch(0.75 0.135 82 / .5);box-shadow:0 8px 28px -14px oklch(0.1 0.006 260 / 0.35);}
+.service-card{position:relative;overflow:hidden;border:1px solid var(--border);background:var(--card);border-radius:.75rem;padding:1.5rem;box-shadow:var(--shadow-card);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;}
+.service-card::after{content:"";position:absolute;left:0;top:0;height:3px;width:0;background:var(--brand-gold);transition:width .45s ease;}
+.service-card:hover{transform:translateY(-6px);border-color:oklch(0.75 0.135 82 / .5);box-shadow:0 12px 32px -14px oklch(0.1 0.006 260 / 0.4);}
+.service-card:hover::after{width:100%;}
 .service-card .s-icon{display:grid;place-items:center;width:2.75rem;height:2.75rem;border-radius:.5rem;background:var(--primary);color:#fff;}
 .service-card h3{margin-top:1.25rem;font-size:1.1rem;font-weight:600;}
 .service-card p{margin-top:.5rem;font-size:.9rem;line-height:1.55;color:var(--muted-foreground);}
@@ -442,8 +444,9 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 }
 
 .like-btn{
-  display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;align-self: flex-start;
-width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--border);
+  display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;
+  align-self:flex-start;width:auto;
+  padding:.4rem .75rem;border-radius:99px;border:1px solid var(--border);
   background:transparent;color:var(--muted-foreground);font-size:.82rem;font-weight:600;
   transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
@@ -458,56 +461,72 @@ width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--borde
 @keyframes like-pulse{0%,100%{opacity:.3;}50%{opacity:.75;}}
 .empty-note{text-align:center;color:var(--muted-foreground);padding:3.5rem 1rem;font-size:.95rem;margin-top:2rem;border:1px dashed var(--border);border-radius:1rem;}
 
-/* Motion — visible, still professional */
-@keyframes rise{
-  from{opacity:0;transform:translateY(40px);}
+/* Motion — professional, noticeable, replayed after first paint */
+html{scroll-behavior:smooth;}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(52px) scale(.96);}
   to{opacity:1;transform:none;}
 }
-@keyframes heroBgIn{
-  from{opacity:0;transform:scale(1.08);}
+@keyframes slideIn{
+  from{opacity:0;transform:translateX(36px);}
   to{opacity:1;transform:none;}
+}
+@keyframes kenBurns{
+  from{transform:scale(1.14);}
+  to{transform:scale(1);}
+}
+@keyframes goldPulse{
+  0%,100%{box-shadow:0 10px 24px -10px oklch(0.75 0.135 82 / 0.45);}
+  50%{box-shadow:0 16px 38px -8px oklch(0.75 0.135 82 / 0.8);}
 }
 @keyframes ctaGlow{
   from{transform:translate3d(0,0,0) scale(1);}
   to{transform:translate3d(5%,-4%,0) scale(1.08);}
 }
+@keyframes fabIn{
+  from{opacity:0;transform:scale(.45) translateY(18px);}
+  to{opacity:1;transform:none;}
+}
 
-.hero-bg{
-  animation:heroBgIn 1.2s ease both;
+.hero-bg img{
+  animation:kenBurns 16s ease-out both;
 }
-.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card{
-  animation:rise 1s cubic-bezier(.22,1,.36,1) both;
+.hero.hero-ready .hero-eyebrow,
+.hero.hero-ready .hero h1,
+.hero.hero-ready .hero .lead,
+.hero.hero-ready .hero-ctas,
+.hero.hero-ready .hero-stats{
+  animation:fadeUp 1.05s cubic-bezier(.22,1,.36,1) both;
 }
-.hero-eyebrow{animation-delay:.05s;}
-.hero h1{animation-delay:.18s;}
-.hero .lead{animation-delay:.32s;}
-.hero-ctas{animation-delay:.48s;}
-.hero-stats{animation-delay:.62s;}
-.hero-card{animation-delay:.28s;}
+.hero.hero-ready .hero-card{
+  animation:slideIn 1.05s cubic-bezier(.22,1,.36,1) both;
+}
+.hero.hero-ready .hero-eyebrow{animation-delay:.08s;}
+.hero.hero-ready h1{animation-delay:.2s;}
+.hero.hero-ready .lead{animation-delay:.36s;}
+.hero.hero-ready .hero-ctas{animation-delay:.5s;}
+.hero.hero-ready .hero-stats{animation-delay:.64s;}
+.hero.hero-ready .hero-card{animation-delay:.28s;}
 
 .trust-item{
-  animation:rise .85s cubic-bezier(.22,1,.36,1) both;
+  animation:fadeUp .9s cubic-bezier(.22,1,.36,1) both;
 }
-.trust-item:nth-child(1){animation-delay:.15s;}
-.trust-item:nth-child(2){animation-delay:.28s;}
-.trust-item:nth-child(3){animation-delay:.41s;}
+.trust-item:nth-child(1){animation-delay:.12s;}
+.trust-item:nth-child(2){animation-delay:.26s;}
+.trust-item:nth-child(3){animation-delay:.4s;}
 .trust-item:nth-child(4){animation-delay:.54s;}
 
 .reach-inner{
-  animation:rise 1s cubic-bezier(.22,1,.36,1) both;
-  animation-delay:.1s;
+  animation:fadeUp 1s cubic-bezier(.22,1,.36,1) both;
+  animation-delay:.12s;
 }
 
-/* Applied by motion.js the instant an element is discovered, so it is
-   reliably hidden/offset before the reveal — not just whenever the
-   IntersectionObserver happens to fire. .motion-play (added on
-   intersect) animates from exactly this state, so there's no flash of
-   already-visible content and no jump. If JS never runs, this class is
-   never added, so content stays visible by default (no-JS fallback). */
-.motion-init{opacity:0;transform:translateY(40px);}
+.motion-init{opacity:0;transform:translateY(52px) scale(.96);}
 .motion-play{
-  animation:rise .9s cubic-bezier(.22,1,.36,1) both;
+  animation:fadeUp .95s cubic-bezier(.22,1,.36,1) both;
 }
+
+.emergency .btn-accent{animation:goldPulse 2.4s ease-in-out infinite;}
 
 .gallery-fig{transition:transform .4s ease, box-shadow .4s ease;}
 .gallery-fig:hover{transform:translateY(-6px);box-shadow:0 18px 32px -18px oklch(0.1 0.006 260 / .45);}
@@ -516,9 +535,6 @@ width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--borde
 .review{transition:transform .28s ease, box-shadow .28s ease;}
 .review:hover{transform:translateY(-5px);box-shadow:0 14px 28px -16px oklch(0.1 0.006 260 / .3);}
 
-/* Touch devices never trigger :hover, so the lift/zoom above is
-   invisible on a phone. This gives the same feedback on tap, scoped to
-   devices that can't hover so desktop behavior is untouched. */
 @media (hover:none){
   .gallery-fig:active{transform:translateY(-4px);box-shadow:0 14px 26px -16px oklch(0.1 0.006 260 / .4);}
   .gallery-fig:active img{transform:scale(1.05);}
@@ -528,10 +544,10 @@ width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--borde
 
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto;}
-  .hero-bg,.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card,
+  .hero-bg img,.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card,
   .trust-item,.reach-inner,.motion-play,.motion-init,.gallery-fig,.service-card,.why-item,
   .work-item,.review,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before,
-  .contact-chevron,.contact-fab{
+  .contact-chevron,.contact-fab,.emergency .btn-accent{
     animation:none !important;
     transition:none !important;
     opacity:1 !important;
@@ -571,7 +587,7 @@ width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--borde
    WhatsApp row once the menu is open. */
 .contact-fab{
   position:fixed;right:1.1rem;bottom:1.1rem;z-index:90;
-  animation:rise .6s cubic-bezier(.22,1,.36,1) both;
+  animation:fabIn .75s .8s cubic-bezier(.22,1,.36,1) both;
 }
 .contact-fab-trigger{
   display:grid;place-items:center;width:3.3rem;height:3.3rem;border-radius:9999px;

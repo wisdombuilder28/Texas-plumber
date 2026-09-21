@@ -40,7 +40,7 @@
       root.querySelectorAll(sel).forEach((el, index) => {
         if (el.dataset.motionWatched === "1") return;
         el.dataset.motionWatched = "1";
-        el.style.animationDelay = `${(index % 4) * 90}ms`;
+        el.style.animationDelay = `${(index % 6) * 110}ms`;
         el.classList.add("motion-init");
         io.observe(el);
       });
@@ -48,6 +48,15 @@
   };
 
   const boot = () => {
+    const hero = document.querySelector(".hero");
+    if (hero) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          hero.classList.add("hero-ready");
+        });
+      });
+    }
+
     watch(document);
 
     [

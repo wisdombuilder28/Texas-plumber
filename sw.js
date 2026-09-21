@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v10";
+const VERSION = "ndflow-v11";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
