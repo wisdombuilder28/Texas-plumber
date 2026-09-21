@@ -278,7 +278,7 @@ function render(snapshot) {
         </button>
         <div class="work-item-body">
           <div class="work-item-label"><span class="dot"></span> ${escapeHtml(item.dateLabel)}</div>
-          ${item.caption ? `<p class="work-item-caption">${escapeHtml(item.caption)}</p>` : ""}
+          ${item.caption ? `<p class="work-item-caption" data-index="${i}">${escapeHtml(item.caption)}</p>` : ""}
           <button type="button" class="like-btn is-loading" data-id="${item.id}" aria-pressed="false" aria-label="Like this photo">
             <i data-lucide="heart" class="icon-sm"></i>
             <span class="like-count">–</span>
@@ -290,6 +290,9 @@ function render(snapshot) {
 
   listEl.querySelectorAll(".work-item-media").forEach((btn) => {
     btn.addEventListener("click", () => openLightbox(Number(btn.dataset.index)));
+  });
+  listEl.querySelectorAll(".work-item-caption").forEach((caption) => {
+    caption.addEventListener("click", () => openLightbox(Number(caption.dataset.index)));
   });
   listEl.querySelectorAll(".like-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
