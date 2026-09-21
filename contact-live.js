@@ -9,7 +9,7 @@
     email: 254,
     phone: 30,
     service: 150,
-    message: 1000,
+    message: 1500,
   };
   const COOLDOWN_MS = 12000;
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,7 +49,7 @@
     if (!fields.location) return "Please enter your location.";
     if (!fields.service) return "Please choose a service.";
     if (!fields.message) return "Please describe how we can help.";
-    if (fields.message.length > LIMITS.message) return "Please keep your message under 1000 characters.";
+    if (fields.message.length > LIMITS.message) return "Please keep your message under 1500 characters.";
     if (fields.method !== "whatsapp" && fields.method !== "email") {
       return "Please choose WhatsApp or Email.";
     }
@@ -74,17 +74,17 @@
 
   const buildWhatsAppText = (fields) =>
     [
-      "Hello N.D. Flow Plumbing,",
+      "Hello *N.D. Flow Plumbing,*",
       "",
       "I would like to make an enquiry.",
       "",
-      "Name: " + fields.name,
-      "Location: " + fields.location,
-      "Phone: " + fields.phone,
-      "Email: " + fields.email,
-      "Service: " + fields.service,
+      "*Name:* " + fields.name,
+      "*Location:* " + fields.location,
+      "*Phone:* " + fields.phone,
+      "*Email:* " + fields.email,
+      "*Service:* " + fields.service,
       "",
-      "Message:",
+      "*Message:*",
       fields.message,
       "",
       "Thank you.",
