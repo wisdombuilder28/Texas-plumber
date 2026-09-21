@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="styles.css?v=8" />
+<link rel="stylesheet" href="styles.css?v=9" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Plumber","name":"N.D. Flow Plumbing Co.","telephone":"+234-901-683-6967","priceRange":"$$","address":{"@type":"PostalAddress","addressCountry":"NG"},"areaServed":"Nigeria","openingHours":"Mo-Su 00:00-23:59","sameAs":["https://instagram.com/n.d.flow_plumbing_co","https://tiktok.com/@n.d.flow_plumbing_co"]}
 </script>
@@ -103,20 +103,69 @@
         </ul>
       </div>
       <div id="contact-form-wrap" class="contact-right">
-        <form id="contact-form" class="contact-form">
-          <div class="field-grid">
-            <div class="field"><label><span class="lbl">Full name<span class="req-star">*</span></span><input type="text" name="name" required /></label></div>
-            <div class="field"><label><span class="lbl">Phone<span class="req-star">*</span></span><input type="tel" name="phone" required /></label></div>
-            <div class="field field-full"><label><span class="lbl">Email</span><input type="email" name="email" /></label></div>
-            <div class="field field-full"><label><span class="lbl">Service address</span><input type="text" name="address" /></label></div>
+        <form id="contact-form" class="contact-form" novalidate>
+          <p id="form-status" class="form-status" role="status" aria-live="polite" hidden></p>
+          <div class="hp" aria-hidden="true">
+            <label>Company website<input type="text" name="company" tabindex="-1" autocomplete="off" /></label>
           </div>
-          <label class="msg msg-label">
-            <span class="lbl">How can we help?</span>
-            <textarea name="message" rows="4" required placeholder="Briefly describe the issue (e.g. water heater not heating, slow drain, install a new toilet)…"></textarea>
+          <div class="field-grid">
+            <div class="field">
+              <label for="cf-name"><span class="lbl">Full name<span class="req-star">*</span></span>
+                <input id="cf-name" type="text" name="name" maxlength="100" autocomplete="name" required />
+              </label>
+            </div>
+            <div class="field">
+              <label for="cf-phone"><span class="lbl">Phone<span class="req-star">*</span></span>
+                <input id="cf-phone" type="tel" name="phone" maxlength="30" autocomplete="tel" required />
+              </label>
+            </div>
+            <div class="field">
+              <label for="cf-email"><span class="lbl">Email<span class="req-star">*</span></span>
+                <input id="cf-email" type="email" name="email" maxlength="254" autocomplete="email" required />
+              </label>
+            </div>
+            <div class="field">
+              <label for="cf-location"><span class="lbl">Location<span class="req-star">*</span></span>
+                <input id="cf-location" type="text" name="location" maxlength="150" autocomplete="address-level2" required />
+              </label>
+            </div>
+            <div class="field field-full">
+              <label for="cf-service"><span class="lbl">Service<span class="req-star">*</span></span>
+                <select id="cf-service" name="service" required>
+                  <option value="" disabled selected>Select a service</option>
+                  <option>General Plumbing</option>
+                  <option>Pipe Installation</option>
+                  <option>Leak Detection & Repair</option>
+                  <option>Bathroom & Kitchen Plumbing</option>
+                  <option>Water Heater Installation</option>
+                  <option>Drain Cleaning</option>
+                  <option>Toilet Installation & Repair</option>
+                  <option>Emergency Plumbing</option>
+                  <option>Maintenance Services</option>
+                  <option>Diaspora & Global Projects</option>
+                  <option>Other</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <label class="msg msg-label" for="cf-message">
+            <span class="lbl">How can we help?<span class="req-star">*</span></span>
+            <textarea id="cf-message" name="message" rows="4" maxlength="1000" required placeholder="Briefly describe the issue (e.g. water heater not heating, slow drain, install a new toilet)…"></textarea>
           </label>
+          <fieldset class="contact-method">
+            <legend>How would you like to contact us?<span class="req-star">*</span></legend>
+            <label class="method-opt">
+              <input type="radio" name="method" value="whatsapp" checked />
+              <span>WhatsApp</span>
+            </label>
+            <label class="method-opt">
+              <input type="radio" name="method" value="email" />
+              <span>Email</span>
+            </label>
+          </fieldset>
           <div class="form-footer">
-            <button type="submit" class="btn-accent">Send request <i data-lucide="arrow-right" class="icon-sm"></i></button>
-            <p>We reply within business hours. Emergencies: call +234 901 683 6967.</p>
+            <button type="submit" class="btn-accent" id="cf-submit">Send request <i data-lucide="arrow-right" class="icon-sm"></i></button>
+            <p>WhatsApp is the fastest. Emergencies: call +234 901 683 6967.</p>
           </div>
         </form>
       </div>
@@ -193,7 +242,9 @@
 </div>
 
 <script src="script.js"></script>
-<script type="module" src="contact-live.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="/emailjs-config.js"></script>
+<script src="/contact-live.js?v=9"></script>
 <script src="/motion.js?v=8"></script>
 <script src="/pwa.js"></script>
 </body>

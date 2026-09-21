@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v8";
+const VERSION = "ndflow-v9";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -51,6 +51,7 @@ function isBypassed(url) {
     url.pathname.startsWith("/admin") ||
     url.pathname.startsWith("/api") ||
     url.pathname.endsWith("-live.js") ||
+    url.pathname.endsWith("emailjs-config.js") ||
     url.pathname.endsWith("firebase-config.js") ||
     /googleapis|gstatic\.com\/firebasejs|firebaseio|firebasestorage|firestore|identitytoolkit|googletagmanager|google-analytics/.test(
       url.host + url.pathname,
