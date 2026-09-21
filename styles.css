@@ -442,8 +442,8 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 }
 
 .like-btn{
-  display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;
-  padding:.4rem .75rem;border-radius:99px;border:1px solid var(--border);
+  display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;align-self: flex-start;
+width: auto;padding:.4rem .75rem;border-radius:99px;border:1px solid var(--border);
   background:transparent;color:var(--muted-foreground);font-size:.82rem;font-weight:600;
   transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
