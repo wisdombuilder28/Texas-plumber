@@ -504,9 +504,23 @@ html{scroll-behavior:smooth;}
 .hero-bg img{
   animation:kenBurns 16s ease-out both;
 }
+/* Hidden-by-default the instant html.js-motion is present (set synchronously
+   in <head>, before anything paints) — so there is never a flash of fully
+   visible content before motion.js hides it. With JS off, html.js-motion
+   never gets added, so everything just renders normally, fully visible. */
+html.js-motion .hero-eyebrow,
+html.js-motion .hero h1,
+html.js-motion .hero .lead,
+html.js-motion .hero-ctas,
+html.js-motion .hero-stats{
+  opacity:0;transform:translateY(30px);
+}
+html.js-motion .hero-card{
+  opacity:0;transform:translateX(36px);
+}
 .hero.hero-ready .hero-eyebrow,
-.hero.hero-ready .hero h1,
-.hero.hero-ready .hero .lead,
+.hero.hero-ready h1,
+.hero.hero-ready .lead,
 .hero.hero-ready .hero-ctas,
 .hero.hero-ready .hero-stats{
   animation:fadeUp 1.05s cubic-bezier(.22,1,.36,1) both;
@@ -534,7 +548,22 @@ html{scroll-behavior:smooth;}
   animation-delay:.12s;
 }
 
-.motion-init{opacity:0;transform:translateY(52px) scale(.96);}
+/* Scroll-reveal targets — same hidden-by-default gate as the hero above.
+   motion.js never has to add a "hidden" class anymore; it only ever adds
+   .motion-play once an element scrolls into view. */
+html.js-motion .service-card,
+html.js-motion .why-item,
+html.js-motion .review,
+html.js-motion .work-item,
+html.js-motion .gallery-fig,
+html.js-motion .areas-list li,
+html.js-motion .about-block,
+html.js-motion .section-header,
+html.js-motion .emergency-inner,
+html.js-motion .contact-left,
+html.js-motion .contact-form{
+  opacity:0;transform:translateY(44px) scale(.97);
+}
 .motion-play{
   animation:fadeUp .95s cubic-bezier(.22,1,.36,1) both;
 }
@@ -558,8 +587,9 @@ html{scroll-behavior:smooth;}
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto;}
   .hero-bg img,.hero-eyebrow,.hero h1,.hero .lead,.hero-ctas,.hero-stats,.hero-card,
-  .trust-item,.reach-inner,.motion-play,.motion-init,.gallery-fig,.service-card,.why-item,
-  .work-item,.review,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before,
+  .trust-item,.reach-inner,.motion-play,.gallery-fig,.service-card,.why-item,
+  .work-item,.review,.areas-list li,.about-block,.section-header,.emergency-inner,
+  .contact-left,.contact-form,.btn-accent,.btn-ghost-light,.mobile-nav,.emergency::before,
   .contact-chevron,.contact-fab,.emergency .btn-accent{
     animation:none !important;
     transition:none !important;

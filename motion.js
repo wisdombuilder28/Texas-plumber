@@ -41,21 +41,17 @@
         if (el.dataset.motionWatched === "1") return;
         el.dataset.motionWatched = "1";
         el.style.animationDelay = `${(index % 6) * 110}ms`;
-        el.classList.add("motion-init");
         io.observe(el);
       });
     });
   };
 
   const boot = () => {
+    // CSS already hid the hero (html.js-motion, set synchronously in <head>,
+    // before first paint) so this can just add the class straight away —
+    // no need to wait a couple of frames to dodge a flash anymore.
     const hero = document.querySelector(".hero");
-    if (hero) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          hero.classList.add("hero-ready");
-        });
-      });
-    }
+    if (hero) hero.classList.add("hero-ready");
 
     watch(document);
 
