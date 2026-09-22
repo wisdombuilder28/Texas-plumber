@@ -64,7 +64,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
   background:rgba(255,255,255,.85);backdrop-filter:blur(8px);
   box-shadow:inset 0 2px 0 var(--brand-gold);
 }
-.header-inner{display:flex;height:4.5rem;align-items:center;justify-content:space-between;gap:1.5rem;max-width:1280px;}
+.header-inner{display:flex;height:5rem;align-items:center;justify-content:space-between;gap:1.5rem;max-width:1280px;}
 .brand{display:flex;align-items:center;gap:.625rem;font-family:var(--font-display);font-weight:800;color:var(--primary);flex-shrink:0;text-decoration:none;}
 .brand-mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:.5rem;overflow:hidden;background:var(--primary);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08);flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;}
@@ -72,6 +72,19 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 .brand-name{font-size:1rem;}
 .brand-sub{font-size:10px;font-weight:600;letter-spacing:.18em;color:var(--muted-foreground);text-transform:uppercase;}
 .brand-dot{color:var(--accent);}
+
+/* Top-header wordmark: sized up for a bold, unmissable N.D. Flow logo — most prominent on the homepage since it's the same header everywhere */
+.site-header .brand{gap:.75rem;}
+.site-header .brand-mark{width:3.25rem;height:3.25rem;border-radius:.625rem;}
+.site-header .brand-name{font-size:1.5rem;letter-spacing:-0.01em;}
+.site-header .brand-sub{font-size:11px;letter-spacing:.14em;}
+@media(min-width:1024px) and (max-width:1359.98px){
+  /* Full nav + phone number share this row here, so keep the mark closer to original to protect that space */
+  .site-header .brand{gap:.625rem;}
+  .site-header .brand-mark{width:2.75rem;height:2.75rem;border-radius:.5rem;}
+  .site-header .brand-name{font-size:1.125rem;}
+  .site-header .brand-sub{font-size:10px;letter-spacing:.16em;}
+}
 .nav-desktop{display:none;flex:1;justify-content:center;gap:.25rem;align-items:center;}
 .nav-desktop a{white-space:nowrap;padding:.5rem .75rem;border-radius:.375rem;font-size:.875rem;font-weight:500;color:rgba(0,0,0,.72);text-decoration:none;transition:color .15s ease,background .15s ease;}
 .nav-desktop a:hover{background:var(--secondary);color:var(--primary);}

@@ -12,7 +12,7 @@ const services = [
   { icon: "home", title: "Toilet Installation & Repair", desc: "Efficient toilet installation and repair — running, leaking or blocked toilets fixed properly with a lasting seal." },
   { icon: "siren", title: "Emergency Plumbing", desc: "24/7 emergency response for burst pipes, flooding and sudden leaks — we answer the call and get there fast." },
   { icon: "settings", title: "Maintenance Services", desc: "Scheduled plumbing maintenance to catch small issues early — keeping pipes and fixtures running smoothly year-round." },
-  { icon: "globe", title: "Diaspora & Global Projects", desc: "Global clients and property owners living abroad can instruct us from anywhere. We quote clearly, send photo updates, and finish the work on the ground in Nigeria." },
+  { icon: "globe", title: "Diaspora & Global Projects", desc: "Global clients and property owners living abroad can instruct us from anywhere. We quote clearly, send photo updates, and see every project through to completion." },
 ];
 
 const whyItems = [
@@ -31,7 +31,7 @@ const reviews = [
   { name: "Tunde K.", city: "Property Manager", stars: 5, text: "We use them for maintenance across several properties. Reliable, fair pricing, and always reachable when something urgent comes up." },
 ];
 
-const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship","Diaspora-owned properties","Global clients with projects in Nigeria"];
+const areas = ["Residential Homes","Apartments & Flats","Commercial Offices","Retail Shops","Estates & Gated Communities","New Developments","Hotels & Shortlets","Schools & Institutions","Places of Worship","Diaspora-owned properties","Global Client Projects"];
 
 const escape = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconTag = (name, cls="icon") => `<i data-lucide="${name}" class="${cls}"></i>`;
