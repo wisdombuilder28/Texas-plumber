@@ -21,12 +21,12 @@
 }
 
 *{box-sizing:border-box;margin:0;padding:0;border-color:var(--border);}
-html{scroll-behavior:smooth;overflow-x:hidden;}
+html{scroll-behavior:smooth;overflow-x:clip;}
 body{
   background:var(--background);color:var(--foreground);
   font-family:var(--font-body);-webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;line-height:1.5;
-  overflow-x:hidden;max-width:100vw;
+  overflow-x:clip;max-width:100vw;
 }
 img{display:block;max-width:100%;height:auto;}
 a{color:inherit;text-decoration:none;}
@@ -64,7 +64,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
   background:rgba(255,255,255,.85);backdrop-filter:blur(8px);
   box-shadow:inset 0 2px 0 var(--brand-gold);
 }
-.header-inner{display:flex;height:5rem;align-items:center;justify-content:space-between;gap:1.5rem;max-width:1280px;}
+.header-inner{display:flex;height:4rem;align-items:center;justify-content:space-between;gap:1.5rem;max-width:1280px;}
 .brand{display:flex;align-items:center;gap:.625rem;font-family:var(--font-display);font-weight:800;color:var(--primary);flex-shrink:0;text-decoration:none;}
 .brand-mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:.5rem;overflow:hidden;background:var(--primary);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08);flex-shrink:0;}
 .brand-mark img{width:100%;height:100%;object-fit:cover;}
@@ -76,10 +76,10 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
 /* Top-header wordmark: sized up for a bold, unmissable N.D. Flow logo — most
    prominent on the homepage since it's the same header everywhere. Stays this
    size at every width now — see the 1440px note below for why that's safe. */
-.site-header .brand{gap:.75rem;}
-.site-header .brand-mark{width:3.25rem;height:3.25rem;border-radius:.625rem;}
-.site-header .brand-name{font-size:1.5rem;letter-spacing:-0.01em;}
-.site-header .brand-sub{font-size:11px;letter-spacing:.14em;}
+.site-header .brand{gap:.625rem;}
+.site-header .brand-mark{width:2.75rem;height:2.75rem;border-radius:.5rem;}
+.site-header .brand-name{font-size:1.75rem;letter-spacing:-0.015em;}
+.site-header .brand-sub{font-size:10px;letter-spacing:.13em;}
 .nav-desktop{display:none;flex:1;justify-content:center;gap:.25rem;align-items:center;}
 .nav-desktop a{white-space:nowrap;padding:.5rem .75rem;border-radius:.375rem;font-size:.875rem;font-weight:500;color:rgba(0,0,0,.72);text-decoration:none;transition:color .15s ease,background .15s ease;}
 .nav-desktop a:hover{background:var(--secondary);color:var(--primary);}
