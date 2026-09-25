@@ -1,4 +1,4 @@
-/* Contact form — WhatsApp click-to-chat + EmailJS. No Firestore. */
+/* Contact form — WhatsApp click-to-chat + Email (mailto / optional EmailJS). */
 (() => {
   "use strict";
 
@@ -13,31 +13,55 @@
   };
   const COOLDOWN_MS = 12000;
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const CTRL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
   const form = document.getElementById("contact-form");
   if (!form) return;
 
   const statusEl = document.getElementById("form-status");
   const submitBtn = document.getElementById("cf-submit");
-  const idleLabel = submitBtn ? submitBtn.innerHTML : "Send request";
   let lastSubmitAt = 0;
   let sending = false;
 
-  const clip = (value, max) => String(value || "").trim().slice(0, max);
+  const clean = (value, max) =>
+    String(value || "")
+      .replace(CTRL, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
+
+  const cleanMultiline = (value, max) =>
+    String(value || "")
+      .replace(CTRL, "")
+      .replace(/\r\n?/g, "\n")
+      .trim()
+      .slice(0, max);
 
   const digits = (phone) => phone.replace(/\D/g, "");
+
+  const cfg = () => window.ND_FLOW_EMAILJS || {};
+
+  const businessEmail = () => {
+    const raw = String(cfg().businessEmail || "").trim();
+    return EMAIL_RE.test(raw) ? raw : "";
+  };
+
+  const emailjsReady = () => {
+    const c = cfg();
+    return Boolean(c.publicKey && c.serviceId && c.templateId && window.emailjs);
+  };
 
   const readFields = () => {
     const data = new FormData(form);
     return {
-      name: clip(data.get("name"), LIMITS.name),
-      location: clip(data.get("location"), LIMITS.location),
-      email: clip(data.get("email"), LIMITS.email),
-      phone: clip(data.get("phone"), LIMITS.phone),
-      service: clip(data.get("service"), LIMITS.service),
-      message: clip(data.get("message"), LIMITS.message),
+      name: clean(data.get("name"), LIMITS.name),
+      location: clean(data.get("location"), LIMITS.location),
+      email: clean(data.get("email"), LIMITS.email).toLowerCase(),
+      phone: clean(data.get("phone"), LIMITS.phone),
+      service: clean(data.get("service"), LIMITS.service),
+      message: cleanMultiline(data.get("message"), LIMITS.message),
       method: String(data.get("method") || "whatsapp"),
-      company: clip(data.get("company"), 80),
+      company: clean(data.get("company"), 80),
     };
   };
 
@@ -67,58 +91,75 @@
     sending = busy;
     if (!submitBtn) return;
     submitBtn.disabled = busy;
-    submitBtn.textContent = busy ? "Sending…" : "";
-    if (!busy) submitBtn.innerHTML = idleLabel;
-    if (!busy && window.lucide) lucide.createIcons();
+    submitBtn.textContent = busy ? "Sending…" : "Send request";
   };
 
-  const buildWhatsAppText = (fields) =>
-    [
-      "Hello *N.D. Flow Plumbing,*",
-      "",
-      "I would like to make an enquiry.",
-      "",
-      "*Name:* " + fields.name,
-      "*Location:* " + fields.location,
-      "*Phone:* " + fields.phone,
-      "*Email:* " + fields.email,
-      "*Service:* " + fields.service,
-      "",
-      "*Message:*",
-      fields.message,
-      "",
-      "Thank you.",
-    ].join("\n");
+  const enquiryLines = (fields) => [
+    "Hello N.D. Flow Plumbing,",
+    "",
+    "I would like to make an enquiry.",
+    "",
+    "Name: " + fields.name,
+    "Location: " + fields.location,
+    "Phone: " + fields.phone,
+    "Email: " + fields.email,
+    "Service: " + fields.service,
+    "",
+    "Message:",
+    fields.message,
+    "",
+    "Thank you.",
+  ];
 
   const openWhatsApp = (fields) => {
     const url =
-      "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent(buildWhatsAppText(fields));
+      "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent(enquiryLines(fields).join("\n"));
     const opened = window.open(url, "_blank", "noopener");
     if (!opened) window.location.href = url;
     setStatus("success", "WhatsApp is opening with your message ready to send.");
   };
 
-  const emailConfigured = () => {
-    const cfg = window.ND_FLOW_EMAILJS || {};
-    return Boolean(cfg.publicKey && cfg.serviceId && cfg.templateId);
-  };
-
-  const sendEmail = async (fields) => {
-    if (!emailConfigured()) {
+  const openMailApp = (fields) => {
+    const to = businessEmail();
+    if (!to) {
       setStatus(
         "error",
         "Email isn't set up yet. Please choose WhatsApp, or call +234 901 683 6967."
       );
-      return;
+      return false;
     }
-    if (!window.emailjs) {
-      setStatus("error", "We couldn't send your email right now. Please try again or use WhatsApp instead.");
-      return;
-    }
-    const cfg = window.ND_FLOW_EMAILJS;
+    const subject = ("New Website Enquiry - " + fields.service).slice(0, 120);
+    const body = enquiryLines(fields).join("\n");
+    const mailto =
+      "mailto:" +
+      encodeURIComponent(to) +
+      "?subject=" +
+      encodeURIComponent(subject) +
+      "&body=" +
+      encodeURIComponent(body);
+    const gmail =
+      "https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=" +
+      encodeURIComponent(to) +
+      "&su=" +
+      encodeURIComponent(subject) +
+      "&body=" +
+      encodeURIComponent(body);
+
+    window.location.href = mailto;
+    window.setTimeout(() => {
+      if (document.hasFocus()) {
+        window.open(gmail, "_blank", "noopener");
+      }
+    }, 650);
+    setStatus("success", "Your email app is opening with your message ready to send.");
+    return true;
+  };
+
+  const sendViaEmailJs = async (fields) => {
+    const c = cfg();
     await window.emailjs.send(
-      cfg.serviceId,
-      cfg.templateId,
+      c.serviceId,
+      c.templateId,
       {
         from_name: fields.name,
         from_email: fields.email,
@@ -128,12 +169,20 @@
         message: fields.message,
         subject: "New Website Enquiry - " + fields.service,
       },
-      { publicKey: cfg.publicKey }
+      { publicKey: c.publicKey }
     );
     setStatus("success", "Your enquiry has been sent successfully.");
     form.reset();
     const wa = form.querySelector('input[name="method"][value="whatsapp"]');
     if (wa) wa.checked = true;
+  };
+
+  const sendEmail = async (fields) => {
+    if (emailjsReady()) {
+      await sendViaEmailJs(fields);
+      return;
+    }
+    openMailApp(fields);
   };
 
   form.addEventListener("submit", async (event) => {
@@ -166,10 +215,13 @@
     } catch (err) {
       console.error("Contact form failed:", err);
       if (fields.method === "email") {
-        setStatus(
-          "error",
-          "We couldn't send your email right now. Please try again or use WhatsApp instead."
-        );
+        const opened = openMailApp(fields);
+        if (!opened) {
+          setStatus(
+            "error",
+            "We couldn't send your email right now. Please try again or use WhatsApp instead."
+          );
+        }
       } else {
         setStatus("error", "WhatsApp didn't open. Please tap WhatsApp in the footer, or call us.");
       }
