@@ -24,6 +24,19 @@ import {
 
 const listEl = document.getElementById("work-list");
 const emptyEl = document.getElementById("work-empty");
+const filterBar = document.getElementById("work-filter");
+
+const CATEGORY_LABELS = {
+  completed: "Completed",
+  "in-progress": "Still working",
+};
+
+let allItems = [];
+let items = []; // visible list after filter
+let currentIndex = 0;
+let currentUid = null; // set once anonymous (or admin) sign-in resolves
+let signInPromise = null;
+let activeFilter = "all";
 
 const lightbox = document.getElementById("lightbox");
 const lightboxImage = document.getElementById("lightbox-image");
@@ -32,11 +45,6 @@ const lightboxText = document.getElementById("lightbox-text");
 const lightboxClose = document.getElementById("lightbox-close");
 const lightboxPrev = document.getElementById("lightbox-prev");
 const lightboxNext = document.getElementById("lightbox-next");
-
-let items = []; // current photo list, in display order
-let currentIndex = 0;
-let currentUid = null; // set once anonymous (or admin) sign-in resolves
-let signInPromise = null;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
@@ -47,6 +55,90 @@ function escapeHtml(value) {
 function formatDate(timestamp) {
   if (!timestamp?.toDate) return null;
   return timestamp.toDate().toLocaleDateString("en-NG", { month: "long", year: "numeric" });
+}
+
+function categoryOf(data) {
+  return data?.category === "in-progress" ? "in-progress" : "completed";
+}
+
+function setFilter(next) {
+  activeFilter = next === "in-progress" || next === "completed" ? next : "all";
+  if (filterBar) {
+    filterBar.querySelectorAll("[data-work-filter]").forEach((btn) => {
+      const on = btn.dataset.workFilter === activeFilter;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+  paintList();
+}
+
+function paintList() {
+  items = activeFilter === "all"
+    ? allItems.slice()
+    : allItems.filter((item) => item.category === activeFilter);
+
+  if (!allItems.length) {
+    clearLikeListeners();
+    listEl.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = "No project photos yet — check back soon.";
+    return;
+  }
+
+  if (!items.length) {
+    clearLikeListeners();
+    listEl.innerHTML = "";
+    emptyEl.hidden = false;
+    emptyEl.textContent = "No projects in this category yet.";
+    return;
+  }
+
+  emptyEl.hidden = true;
+  listEl.innerHTML = items
+    .map(
+      (item, i) => `
+      <article class="work-item">
+        <button type="button" class="work-item-media" data-index="${i}" aria-label="View full photo">
+          <img src="${escapeHtml(item.imageData)}" alt="${escapeHtml(item.alt)}" loading="lazy" />
+          <span class="expand-hint"><i data-lucide="maximize-2" class="icon-sm"></i></span>
+        </button>
+        <div class="work-item-body">
+          <div class="work-item-label">
+            <span class="dot"></span>
+            <span class="work-cat">${escapeHtml(CATEGORY_LABELS[item.category] || "Completed")}</span>
+            <span class="work-cat-sep">·</span>
+            ${escapeHtml(item.dateLabel)}
+          </div>
+          ${item.caption ? `<p class="work-item-caption" data-index="${i}">${escapeHtml(item.caption)}</p>` : ""}
+          <button type="button" class="like-btn is-loading" data-id="${item.id}" aria-pressed="false" aria-label="Like this photo">
+            <i data-lucide="heart" class="icon-sm"></i>
+            <span class="like-count">–</span>
+          </button>
+        </div>
+      </article>`
+    )
+    .join("");
+
+  listEl.querySelectorAll(".work-item-media").forEach((btn) => {
+    btn.addEventListener("click", () => openLightbox(Number(btn.dataset.index)));
+  });
+  listEl.querySelectorAll(".work-item-caption").forEach((caption) => {
+    caption.addEventListener("click", () => openLightbox(Number(caption.dataset.index)));
+  });
+  listEl.querySelectorAll(".like-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.retry === "true") {
+        const item = items.find((i) => i.id === btn.dataset.id);
+        if (item) likeUnsubscribes.push(watchLikesFor(item, btn));
+        return;
+      }
+      toggleLike(btn.dataset.id, btn);
+    });
+  });
+
+  if (window.lucide) lucide.createIcons();
+  watchAllLikes();
 }
 
 // Returns a UID, signing in anonymously if needed. Safe to call from a tap
@@ -253,60 +345,26 @@ async function watchAllLikes() {
 // ---------- Live gallery list ----------
 function render(snapshot) {
   if (snapshot.empty) {
+    allItems = [];
     items = [];
     listEl.innerHTML = "";
     emptyEl.hidden = false;
+    emptyEl.textContent = "No project photos yet — check back soon.";
     return;
   }
-  emptyEl.hidden = true;
 
-  items = snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    imageData: docSnap.data().imageData,
-    alt: docSnap.data().alt || "N.D. Flow Plumbing Co. completed project",
-    caption: docSnap.data().caption || "",
-    dateLabel: formatDate(docSnap.data().createdAt) || "Completed project",
-  }));
-
-  listEl.innerHTML = items
-    .map(
-      (item, i) => `
-      <article class="work-item">
-        <button type="button" class="work-item-media" data-index="${i}" aria-label="View full photo">
-          <img src="${escapeHtml(item.imageData)}" alt="${escapeHtml(item.alt)}" loading="lazy" />
-          <span class="expand-hint"><i data-lucide="maximize-2" class="icon-sm"></i></span>
-        </button>
-        <div class="work-item-body">
-          <div class="work-item-label"><span class="dot"></span> ${escapeHtml(item.dateLabel)}</div>
-          ${item.caption ? `<p class="work-item-caption" data-index="${i}">${escapeHtml(item.caption)}</p>` : ""}
-          <button type="button" class="like-btn is-loading" data-id="${item.id}" aria-pressed="false" aria-label="Like this photo">
-            <i data-lucide="heart" class="icon-sm"></i>
-            <span class="like-count">–</span>
-          </button>
-        </div>
-      </article>`
-    )
-    .join("");
-
-  listEl.querySelectorAll(".work-item-media").forEach((btn) => {
-    btn.addEventListener("click", () => openLightbox(Number(btn.dataset.index)));
+  allItems = snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      imageData: data.imageData,
+      alt: data.alt || "N.D. Flow Plumbing Co. completed project",
+      caption: data.caption || "",
+      category: categoryOf(data),
+      dateLabel: formatDate(data.createdAt) || "Project",
+    };
   });
-  listEl.querySelectorAll(".work-item-caption").forEach((caption) => {
-    caption.addEventListener("click", () => openLightbox(Number(caption.dataset.index)));
-  });
-  listEl.querySelectorAll(".like-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.retry === "true") {
-        const item = items.find((i) => i.id === btn.dataset.id);
-        if (item) likeUnsubscribes.push(watchLikesFor(item, btn));
-        return;
-      }
-      toggleLike(btn.dataset.id, btn);
-    });
-  });
-
-  if (window.lucide) lucide.createIcons();
-  watchAllLikes();
+  paintList();
 }
 
 try {
@@ -324,4 +382,12 @@ try {
   );
 } catch (error) {
   console.warn("Recent Work not started:", error);
+}
+
+if (filterBar) {
+  filterBar.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-work-filter]");
+    if (!btn) return;
+    setFilter(btn.dataset.workFilter);
+  });
 }

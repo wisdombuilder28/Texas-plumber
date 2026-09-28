@@ -31,6 +31,11 @@ const MAX_ENCODED_BYTES = 700 * 1024;
 const MAX_RAW_BYTES = Math.floor((MAX_ENCODED_BYTES * 3) / 4);
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const DEFAULT_ALT = "N.D. Flow Plumbing Co. completed project";
+const CATEGORIES = [
+  { id: "completed", label: "Completed" },
+  { id: "in-progress", label: "Still working" },
+];
+const DEFAULT_CATEGORY = "completed";
 
 const grid = document.getElementById("gallery-grid-admin");
 const emptyState = document.getElementById("gallery-empty");
@@ -48,8 +53,18 @@ const stagingCount = document.getElementById("staging-count");
 const stagingCancelBtn = document.getElementById("staging-cancel");
 const stagingConfirmBtn = document.getElementById("staging-confirm");
 
-// Files the admin has picked but not yet confirmed -- { file, previewUrl, caption, featured }
+// Files the admin has picked but not yet confirmed -- { file, previewUrl, caption, featured, category }
 let pending = [];
+let lastDocs = [];
+let adminFilter = "all";
+
+function categoryOf(data) {
+  return data?.category === "in-progress" ? "in-progress" : DEFAULT_CATEGORY;
+}
+
+function categoryLabel(id) {
+  return CATEGORIES.find((c) => c.id === id)?.label || "Completed";
+}
 
 function showMessage(text, kind = "error") {
   messageEl.textContent = text;
@@ -98,25 +113,61 @@ function startGalleryListener() {
 }
 
 function renderGrid(snapshot) {
-  if (snapshot.empty) {
+  lastDocs = snapshot.docs;
+  paintAdminGrid();
+}
+
+function paintAdminGrid() {
+  const docs = lastDocs.filter((docSnap) => {
+    if (adminFilter === "all") return true;
+    return categoryOf(docSnap.data()) === adminFilter;
+  });
+
+  document.querySelectorAll("[data-admin-filter]").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.adminFilter === adminFilter);
+    btn.setAttribute("aria-selected", btn.dataset.adminFilter === adminFilter ? "true" : "false");
+  });
+
+  if (!lastDocs.length) {
     grid.innerHTML = "";
     emptyState.hidden = false;
+    emptyState.querySelector("p").textContent = 'No photos yet. Tap "Upload photos" above to add your first one.';
     if (window.lucide) lucide.createIcons();
     return;
   }
+
+  if (!docs.length) {
+    grid.innerHTML = "";
+    emptyState.hidden = false;
+    emptyState.querySelector("p").textContent = "No photos in this category yet.";
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
   emptyState.hidden = true;
-  grid.innerHTML = snapshot.docs
+  grid.innerHTML = docs
     .map((docSnap) => {
       const d = docSnap.data();
       const featured = d.featured === true;
+      const category = categoryOf(d);
+      const options = CATEGORIES.map(
+        (c) => `<option value="${c.id}" ${c.id === category ? "selected" : ""}>${c.label}</option>`
+      ).join("");
       return `
       <figure class="gallery-admin-item${featured ? " is-featured" : ""}">
         <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
+        <span class="cat-badge cat-badge-${category}">${escapeHtml(categoryLabel(category))}</span>
         ${d.caption ? `<figcaption>${escapeHtml(d.caption)}</figcaption>` : ""}
         <button type="button" class="feature-btn" data-id="${docSnap.id}" data-featured="${featured ? "1" : "0"}" aria-pressed="${featured ? "true" : "false"}">
           <i data-lucide="star" class="icon-sm"></i>
           ${featured ? "On homepage" : "Show on homepage"}
         </button>
+        <label class="category-select-wrap">
+          <span class="visually-hidden">Category</span>
+          <select class="category-select" data-id="${docSnap.id}" aria-label="Category">
+            ${options}
+          </select>
+        </label>
         <button type="button" class="btn-danger delete-btn" data-id="${docSnap.id}">
           <i data-lucide="trash-2" class="icon-sm"></i> Delete
         </button>
@@ -132,6 +183,9 @@ function renderGrid(snapshot) {
       toggleFeatured(btn.dataset.id, btn.dataset.featured === "1", btn);
     });
   });
+  grid.querySelectorAll(".category-select").forEach((select) => {
+    select.addEventListener("change", () => setCategory(select.dataset.id, select.value, select));
+  });
   if (window.lucide) lucide.createIcons();
 }
 
@@ -146,6 +200,22 @@ async function deletePhoto(id, btn) {
     console.error("Delete failed:", error);
     showMessage(`Couldn't delete that photo: ${friendlyFirestoreError(error)}`);
     btn.disabled = false;
+  }
+}
+
+async function setCategory(id, category, select) {
+  const next = category === "in-progress" ? "in-progress" : DEFAULT_CATEGORY;
+  select.disabled = true;
+  try {
+    await updateDoc(doc(db, "gallery", id), {
+      category: next,
+      updatedAt: serverTimestamp(),
+    });
+    showMessage(`Moved to “${categoryLabel(next)}”.`, "success");
+  } catch (error) {
+    console.error("Category update failed:", error);
+    showMessage(`Couldn't update category: ${friendlyFirestoreError(error)}`);
+    select.disabled = false;
   }
 }
 
@@ -199,7 +269,7 @@ function stageFiles(fileList) {
       showMessage(`${file.name}: that file is too large to process (max 20MB).`);
       continue;
     }
-    pending.push({ file, previewUrl: URL.createObjectURL(file), caption: "", featured: false });
+    pending.push({ file, previewUrl: URL.createObjectURL(file), caption: "", featured: false, category: DEFAULT_CATEGORY });
   }
   renderStaging();
 }
@@ -247,6 +317,16 @@ function renderStaging() {
           <input type="checkbox" class="staging-featured-input" data-index="${i}" ${p.featured ? "checked" : ""} />
           <span>Show on homepage</span>
         </label>
+        <fieldset class="staging-category">
+          <legend>Category</legend>
+          ${CATEGORIES.map(
+            (c) => `
+            <label>
+              <input type="radio" name="staging-cat-${i}" class="staging-category-input" data-index="${i}" value="${c.id}" ${p.category === c.id ? "checked" : ""} />
+              <span>${c.label}</span>
+            </label>`
+          ).join("")}
+        </fieldset>
       </div>`
     )
     .join("");
@@ -264,6 +344,12 @@ function renderStaging() {
     checkbox.addEventListener("change", (e) => {
       const i = Number(e.target.dataset.index);
       pending[i].featured = e.target.checked;
+    });
+  });
+  stagingList.querySelectorAll(".staging-category-input").forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      const i = Number(e.target.dataset.index);
+      pending[i].category = e.target.value === "in-progress" ? "in-progress" : DEFAULT_CATEGORY;
     });
   });
   stagingList.querySelectorAll(".staging-remove").forEach((btn) => {
@@ -346,7 +432,7 @@ async function uploadStaged() {
   uploadLabel.classList.add("disabled");
 
   for (let i = 0; i < items.length; i++) {
-    const { file: original, previewUrl, caption, featured } = items[i];
+    const { file: original, previewUrl, caption, featured, category } = items[i];
     const label = `(${i + 1}/${items.length}) ${original.name}`;
     const trimmedCaption = caption.trim();
 
@@ -371,6 +457,7 @@ async function uploadStaged() {
           sizeBytes: compressed.size,
           order: Date.now(),
           featured: featured === true,
+          category: category === "in-progress" ? "in-progress" : DEFAULT_CATEGORY,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
@@ -399,3 +486,9 @@ async function uploadStaged() {
 
 stagingConfirmBtn.addEventListener("click", uploadStaged);
 fileInput.addEventListener("change", (e) => stageFiles(e.target.files));
+document.querySelectorAll("[data-admin-filter]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    adminFilter = btn.dataset.adminFilter || "all";
+    paintAdminGrid();
+  });
+});

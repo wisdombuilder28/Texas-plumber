@@ -32,7 +32,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="styles.css?v=12" />
+<link rel="stylesheet" href="styles.css?v=14" />
 
 <!-- Google Analytics (GA4) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-9LBTZMCXGV"></script>
@@ -94,8 +94,14 @@
   <div class="container-tight">
     <div class="section-header">
       <p class="eyebrow">Recent Work</p>
-      <h1>Projects we've completed.</h1>
-      <p class="intro">A closer look at completed jobs — every photo here was uploaded by our team after the work was finished. Local, diaspora and global clients all appear in this portfolio.</p>
+      <h1>Projects on the board.</h1>
+      <p class="intro">Completed jobs and work still in progress — every photo here was uploaded by our team. Use the tabs to filter.</p>
+    </div>
+
+    <div id="work-filter" class="work-filter" role="tablist" aria-label="Filter projects">
+      <button type="button" class="work-filter-btn is-active" data-work-filter="all" role="tab" aria-selected="true">All</button>
+      <button type="button" class="work-filter-btn" data-work-filter="completed" role="tab" aria-selected="false">Completed</button>
+      <button type="button" class="work-filter-btn" data-work-filter="in-progress" role="tab" aria-selected="false">Still working</button>
     </div>
 
     <div id="work-list" class="work-list"></div>

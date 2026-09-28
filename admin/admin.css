@@ -309,6 +309,39 @@ body.admin-body.auth-ready .auth-loading{display:none;}
   border-radius:.5rem;padding:.7rem .8rem;
 }
 .staging-featured input{width:1.15rem;height:1.15rem;accent-color:var(--brand-gold);flex-shrink:0;}
+.staging-category{
+  margin:0;padding:.7rem .8rem;border:1px solid var(--border);border-radius:.5rem;
+  background:var(--surface-soft);display:flex;flex-wrap:wrap;gap:.65rem .9rem;align-items:center;
+}
+.staging-category legend{font-size:.8rem;font-weight:700;padding:0 .2rem;}
+.staging-category label{display:flex;align-items:center;gap:.4rem;font-size:.88rem;font-weight:600;cursor:pointer;}
+.staging-category input{accent-color:var(--brand-gold);}
+.visually-hidden{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;
+}
+.admin-filter{display:flex;flex-wrap:wrap;gap:.45rem;margin:0 0 1rem;}
+.admin-filter-btn{
+  appearance:none;border:1px solid var(--border);background:#fff;
+  font:inherit;font-size:.8rem;font-weight:700;padding:.4rem .8rem;border-radius:999px;cursor:pointer;
+}
+.admin-filter-btn.is-active{background:var(--brand-black);color:#fff;border-color:var(--brand-black);}
+.cat-badge{
+  position:absolute;left:.5rem;top:.5rem;z-index:2;
+  font-size:.65rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  padding:.22rem .45rem;border-radius:.35rem;
+  background:oklch(0.15 0.006 260 / 0.82);color:#fff;
+}
+.cat-badge-in-progress{background:var(--brand-gold);color:oklch(0.15 0.01 260);}
+.gallery-admin-item .feature-btn{top:2.15rem;}
+.gallery-admin-item figcaption{top:4.35rem;}
+.category-select-wrap{
+  position:absolute;left:.5rem;right:.5rem;bottom:2.55rem;z-index:2;
+}
+.category-select{
+  width:100%;border:0;border-radius:.4rem;
+  background:oklch(0.15 0.006 260 / 0.86);color:#fff;
+  font:inherit;font-size:.75rem;font-weight:700;padding:.4rem .5rem;
+}
 /* Hover-to-reveal only on real mouse pointers -- touch devices always show the delete button */
 @media (hover:hover) and (pointer:fine){
   .gallery-admin-item .delete-btn{opacity:0;transition:opacity .15s ease;}

@@ -49,7 +49,7 @@
         <div class="panel-head">
           <div>
             <h2>Project photos</h2>
-            <p class="panel-sub">All photos appear on Recent Work. Tick “Show on homepage” to also feature a photo on the home page (up to 6). Changes appear on the live site automatically — no redeploy needed.</p>
+            <p class="panel-sub">All photos appear on Recent Work. Pick a category on upload (Completed or Still working). Tick “Show on homepage” to feature one on the home page. Changes appear on the live site automatically.</p>
           </div>
           <label class="btn-accent upload-label">
             <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple hidden />
@@ -80,6 +80,12 @@
         </div>
 
         <div id="gallery-message" class="form-message" role="status" hidden></div>
+
+        <div class="admin-filter" role="tablist" aria-label="Filter gallery">
+          <button type="button" class="admin-filter-btn is-active" data-admin-filter="all" role="tab" aria-selected="true">All</button>
+          <button type="button" class="admin-filter-btn" data-admin-filter="completed" role="tab" aria-selected="false">Completed</button>
+          <button type="button" class="admin-filter-btn" data-admin-filter="in-progress" role="tab" aria-selected="false">Still working</button>
+        </div>
 
         <div id="gallery-grid-admin" class="gallery-grid-admin"></div>
         <div id="gallery-empty" class="empty-state" hidden>
