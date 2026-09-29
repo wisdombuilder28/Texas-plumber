@@ -49,7 +49,7 @@
         <div class="panel-head">
           <div>
             <h2>Project photos</h2>
-            <p class="panel-sub">All photos appear on Recent Work. Pick a category on upload (Completed or Still working). Tick “Show on homepage” to feature one on the home page. Changes appear on the live site automatically.</p>
+            <p class="panel-sub">Manage the project media library from one place. Assign a category during upload, move existing photos between categories, rename categories, and choose which photos appear on the homepage.</p>
           </div>
           <label class="btn-accent upload-label">
             <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple hidden />
@@ -81,11 +81,23 @@
 
         <div id="gallery-message" class="form-message" role="status" hidden></div>
 
-        <div class="admin-filter" role="tablist" aria-label="Filter gallery">
-          <button type="button" class="admin-filter-btn is-active" data-admin-filter="all" role="tab" aria-selected="true">All</button>
-          <button type="button" class="admin-filter-btn" data-admin-filter="completed" role="tab" aria-selected="false">Completed</button>
-          <button type="button" class="admin-filter-btn" data-admin-filter="in-progress" role="tab" aria-selected="false">Still working</button>
-        </div>
+        <section class="category-manager" aria-labelledby="category-manager-title">
+          <div class="category-manager-head">
+            <div>
+              <h3 id="category-manager-title">Media categories</h3>
+              <p>These categories power both this admin library and the filters visitors see on Recent Work.</p>
+            </div>
+            <form id="category-form" class="category-add-form">
+              <label class="visually-hidden" for="category-name">New category name</label>
+              <input id="category-name" name="category" type="text" maxlength="40" autocomplete="off" placeholder="New category name" />
+              <button type="submit" class="btn-accent">Add category</button>
+            </form>
+          </div>
+          <div id="category-list" class="category-list"></div>
+          <p id="category-empty" class="category-empty" hidden>No categories yet. The default categories will be restored when an admin opens this page.</p>
+        </section>
+
+        <div id="admin-filter-bar" class="admin-filter" role="tablist" aria-label="Filter media library"></div>
 
         <div id="gallery-grid-admin" class="gallery-grid-admin"></div>
         <div id="gallery-empty" class="empty-state" hidden>

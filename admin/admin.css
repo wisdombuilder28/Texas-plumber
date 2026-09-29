@@ -309,29 +309,51 @@ body.admin-body.auth-ready .auth-loading{display:none;}
   border-radius:.5rem;padding:.7rem .8rem;
 }
 .staging-featured input{width:1.15rem;height:1.15rem;accent-color:var(--brand-gold);flex-shrink:0;}
-.staging-category{
-  margin:0;padding:.7rem .8rem;border:1px solid var(--border);border-radius:.5rem;
-  background:var(--surface-soft);display:flex;flex-wrap:wrap;gap:.65rem .9rem;align-items:center;
+.staging-category-select-field{
+  display:grid;gap:.35rem;margin-top:.55rem;
 }
-.staging-category legend{font-size:.8rem;font-weight:700;padding:0 .2rem;}
-.staging-category label{display:flex;align-items:center;gap:.4rem;font-size:.88rem;font-weight:600;cursor:pointer;}
-.staging-category input{accent-color:var(--brand-gold);}
+.staging-category-select-field span{font-size:.8rem;font-weight:700;color:var(--brand-black);}
+.staging-category-select-input{
+  width:100%;padding:.58rem .65rem;border:1px solid var(--border);border-radius:.5rem;
+  background:#fff;color:var(--brand-black);font:inherit;font-size:.84rem;font-weight:600;
+}
+.staging-category-select-input:focus{outline:none;border-color:var(--brand-gold);box-shadow:0 0 0 3px oklch(0.75 0.135 82 / .16);}
 .visually-hidden{
   position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;
 }
+.category-manager{border:1px solid var(--border);border-radius:.75rem;background:var(--surface-soft);padding:1rem;margin:0 0 1rem;}
+.category-manager-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.8rem;}
+.category-manager-head h3{font-size:.95rem;margin:0 0 .2rem;}
+.category-manager-head p{font-size:.78rem;color:var(--muted-foreground);max-width:34rem;}
+.category-add-form{display:flex;align-items:center;gap:.5rem;width:100%;max-width:28rem;}
+.category-add-form input{flex:1;min-width:0;padding:.65rem .75rem;border:1px solid var(--border);border-radius:.5rem;background:#fff;font-size:.86rem;}
+.category-add-form input:focus{outline:none;border-color:var(--brand-gold);box-shadow:0 0 0 3px oklch(0.75 0.135 82 / .2);}
+.category-add-form button{white-space:nowrap;}
+.category-list{display:grid;gap:.55rem;}
+.category-manager-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.65rem .7rem;background:#fff;border:1px solid var(--border);border-radius:.55rem;}
+.category-manager-main{display:flex;align-items:center;gap:.65rem;min-width:0;flex:1;}
+.category-name-input{width:100%;max-width:18rem;padding:.48rem .6rem;border:1px solid transparent;border-radius:.4rem;background:transparent;font:inherit;font-size:.84rem;font-weight:700;}
+.category-name-input:focus{outline:none;border-color:var(--brand-gold);background:#fff;box-shadow:0 0 0 2px oklch(0.75 0.135 82 / .16);}
+.category-item-count{font-size:.72rem;color:var(--muted-foreground);white-space:nowrap;}
+.category-manager-actions{display:flex;align-items:center;gap:.4rem;flex-shrink:0;}
+.category-manager-actions button{padding:.42rem .65rem;font-size:.76rem;}
+.category-empty{font-size:.8rem;color:var(--muted-foreground);}
 .admin-filter{display:flex;flex-wrap:wrap;gap:.45rem;margin:0 0 1rem;}
 .admin-filter-btn{
   appearance:none;border:1px solid var(--border);background:#fff;
-  font:inherit;font-size:.8rem;font-weight:700;padding:.4rem .8rem;border-radius:999px;cursor:pointer;
+  font:inherit;font-size:.8rem;font-weight:700;padding:.45rem .75rem;border-radius:999px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:.35rem;
 }
 .admin-filter-btn.is-active{background:var(--brand-black);color:#fff;border-color:var(--brand-black);}
+.filter-count{font-size:.68rem;min-width:1.2rem;text-align:center;opacity:.7;}
 .cat-badge{
   position:absolute;left:.5rem;top:.5rem;z-index:2;
+  max-width:calc(100% - 1rem);
   font-size:.65rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
   padding:.22rem .45rem;border-radius:.35rem;
   background:oklch(0.15 0.006 260 / 0.82);color:#fff;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.cat-badge-in-progress{background:var(--brand-gold);color:oklch(0.15 0.01 260);}
 .gallery-admin-item .feature-btn{top:2.15rem;}
 .gallery-admin-item figcaption{top:4.35rem;}
 .category-select-wrap{

@@ -16,17 +16,44 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Public gallery category labels. Anyone can read these so the Recent Work filters
+    // stay in sync with the admin media library. Only recognised admins may create,
+    // rename or delete category documents.
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'order', 'createdAt', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.order is number
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'order', 'createdAt', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.order is number
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
     // Gallery photos shown on the public site. Anyone can read; only an admin can change them.
     // Photos are stored as base64 image data directly on the document (no Firebase Storage,
     // no billing account needed) — the size check keeps every write safely under Firestore's
-    // 1 MiB per-document ceiling. Matches the MAX_ENCODED_BYTES budget in admin/js/gallery.js.
+    // 1 MiB per-document ceiling. Category fields are kept optional for backwards compatibility
+    // with older gallery records that predate the dynamic category manager.
     match /gallery/{imageId} {
       allow read: if true;
       allow create, update: if isAdmin()
         && request.resource.data.imageData is string
         && request.resource.data.imageData.size() < 900000
         && request.resource.data.caption is string
-        && request.resource.data.caption.size() < 200;
+        && request.resource.data.caption.size() <= 300
+        && (!request.resource.data.keys().hasAny(['categoryId']) || request.resource.data.categoryId is string)
+        && (!request.resource.data.keys().hasAny(['category']) || request.resource.data.category is string);
       allow delete: if isAdmin();
 
       // Public likes, one per visitor. The document ID *is* the visitor's Firebase

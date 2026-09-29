@@ -45,7 +45,14 @@ There is no public sign-up page anywhere in this project, by design. This is the
 
 Skipping this is the #1 way people get stuck: login succeeds, but every gallery upload/delete fails with a permissions error — every rule in this project (gallery, and later the analytics endpoint) checks membership in this collection, not just "is logged in."
 
-### 7. Deploy and test
+### 7. Gallery categories
+The Gallery admin page now manages a separate `categories` collection automatically. The first admin visit creates the default `Completed` and `Still working` categories when they are missing. You can then add, rename, delete, filter, and reassign categories from the Gallery page.
+
+You do **not** need to create category documents manually. You only need to publish the latest `firestore.rules`. A category cannot be deleted from the admin UI while gallery photos are still assigned to it; reassign those photos first.
+
+Existing gallery photos remain compatible: older records without `categoryId` continue to display under `Completed` until you reassign them. New uploads save both `categoryId` and the legacy `category` field so the site remains backwards-compatible.
+
+### 8. Deploy and test
 Push these files to GitHub as usual — Vercel redeploys automatically. Then visit:
 
 `https://your-site.vercel.app/admin` (redirects to the login page)

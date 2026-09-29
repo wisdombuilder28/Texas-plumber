@@ -1,10 +1,6 @@
 // work-live.js
-// Feeds the full "Recent Work" page (work.html) from the live gallery
-// collection in Firestore, drives the tap-to-preview lightbox, and now the
-// like/unlike feature. Visitors are signed in anonymously and silently --
-// no login UI is ever shown to them -- purely so each browser has a stable
-// Firebase UID to hang one like per photo off of. See firestore.rules for
-// how that's actually enforced server-side, not just in this file.
+// Feeds the full Recent Work page from the live gallery collection in Firestore,
+// dynamically builds the public category filters, drives the lightbox, and handles likes.
 import { auth, db } from "./firebase-config.js";
 import {
   onAuthStateChanged,
@@ -17,6 +13,7 @@ import {
   onSnapshot,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   deleteDoc,
   serverTimestamp,
@@ -26,17 +23,20 @@ const listEl = document.getElementById("work-list");
 const emptyEl = document.getElementById("work-empty");
 const filterBar = document.getElementById("work-filter");
 
-const CATEGORY_LABELS = {
-  completed: "Completed",
-  "in-progress": "Still working",
-};
+const DEFAULT_CATEGORIES = [
+  { id: "completed", label: "Completed", order: 1 },
+  { id: "in-progress", label: "Still working", order: 2 },
+];
 
+let categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+let categoryMap = new Map(categories.map((c) => [c.id, c]));
 let allItems = [];
-let items = []; // visible list after filter
+let items = [];
 let currentIndex = 0;
-let currentUid = null; // set once anonymous (or admin) sign-in resolves
+let currentUid = null;
 let signInPromise = null;
 let activeFilter = "all";
+let categoriesReady = false;
 
 const lightbox = document.getElementById("lightbox");
 const lightboxImage = document.getElementById("lightbox-image");
@@ -57,19 +57,47 @@ function formatDate(timestamp) {
   return timestamp.toDate().toLocaleDateString("en-NG", { month: "long", year: "numeric" });
 }
 
+function rebuildCategoryMap() {
+  categoryMap = new Map(categories.map((c) => [c.id, c]));
+}
+
+function sortedCategories() {
+  return categories.slice().sort((a, b) => {
+    const diff = (Number(a.order) || 0) - (Number(b.order) || 0);
+    return diff || a.label.localeCompare(b.label);
+  });
+}
+
+function humanizeCategoryId(id) {
+  const value = String(id || "").replace(/[-_]+/g, " ").trim();
+  if (!value) return "Completed";
+  return value.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function categoryOf(data) {
-  return data?.category === "in-progress" ? "in-progress" : "completed";
+  const candidate = String(data?.categoryId || data?.category || "").trim();
+  return categoryMap.has(candidate) ? candidate : DEFAULT_CATEGORIES.some((c) => c.id === candidate) ? candidate : "completed";
+}
+
+function categoryLabel(id) {
+  return categoryMap.get(id)?.label || DEFAULT_CATEGORIES.find((c) => c.id === id)?.label || humanizeCategoryId(id);
+}
+
+function paintFilterBar() {
+  if (!filterBar) return;
+  const buttons = [
+    `<button type="button" class="work-filter-btn ${activeFilter === "all" ? "is-active" : ""}" data-work-filter="all" role="tab" aria-selected="${activeFilter === "all" ? "true" : "false"}">All</button>`,
+    ...sortedCategories().map((category) => {
+      const active = activeFilter === category.id;
+      return `<button type="button" class="work-filter-btn ${active ? "is-active" : ""}" data-work-filter="${escapeHtml(category.id)}" role="tab" aria-selected="${active ? "true" : "false"}">${escapeHtml(category.label)}</button>`;
+    }),
+  ];
+  filterBar.innerHTML = buttons.join("");
 }
 
 function setFilter(next) {
-  activeFilter = next === "in-progress" || next === "completed" ? next : "all";
-  if (filterBar) {
-    filterBar.querySelectorAll("[data-work-filter]").forEach((btn) => {
-      const on = btn.dataset.workFilter === activeFilter;
-      btn.classList.toggle("is-active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
-  }
+  activeFilter = next === "all" || categoryMap.has(next) ? next : "all";
+  paintFilterBar();
   paintList();
 }
 
@@ -90,7 +118,7 @@ function paintList() {
     clearLikeListeners();
     listEl.innerHTML = "";
     emptyEl.hidden = false;
-    emptyEl.textContent = "No projects in this category yet.";
+    emptyEl.textContent = `No projects in “${categoryLabel(activeFilter)}” yet.`;
     return;
   }
 
@@ -106,7 +134,7 @@ function paintList() {
         <div class="work-item-body">
           <div class="work-item-label">
             <span class="dot"></span>
-            <span class="work-cat">${escapeHtml(CATEGORY_LABELS[item.category] || "Completed")}</span>
+            <span class="work-cat">${escapeHtml(categoryLabel(item.category))}</span>
             <span class="work-cat-sep">·</span>
             ${escapeHtml(item.dateLabel)}
           </div>
@@ -141,9 +169,6 @@ function paintList() {
   watchAllLikes();
 }
 
-// Returns a UID, signing in anonymously if needed. Safe to call from a tap
-// handler even if the background sign-in below never completed -- this is
-// the retry path, not just a one-shot attempt made silently on page load.
 function ensureSignedIn() {
   if (currentUid) return Promise.resolve(currentUid);
   if (!signInPromise) {
@@ -153,18 +178,13 @@ function ensureSignedIn() {
         return currentUid;
       })
       .catch((error) => {
-        signInPromise = null; // let the next attempt try again instead of staying stuck
+        signInPromise = null;
         throw error;
       });
   }
   return signInPromise;
 }
 
-// ---------- Silent anonymous sign-in ----------
-// Only signs in anonymously if nobody is signed in at all -- this matters
-// specifically so an admin browsing their own public site while logged into
-// /admin (same browser, same Firebase Auth session) never gets bumped to an
-// anonymous session. No UI, no interruption, either way.
 onAuthStateChanged(auth, (user) => {
   if (user) {
     currentUid = user.uid;
@@ -246,28 +266,18 @@ function updateLikeButton(btn, count, liked) {
   btn.title = "";
 }
 
-// Toggling just writes the like doc or deletes it -- it does NOT compute the
-// new count or flip the color itself. That's deliberate: the live listener
-// below is the single source of truth for what the button shows, so this
-// can't ever fall out of sync with what's actually in the database, and it
-// naturally picks up likes/unlikes from other visitors too, live.
 async function toggleLike(imageId, btn) {
   btn.disabled = true;
   try {
     const uid = await ensureSignedIn();
     const ref = likeDocRef(imageId, uid);
-    // Authoritative check -- NOT the button's on-screen aria-pressed, which
-    // is only ever painted by the live listener and can briefly lag behind
-    // the real database state. Deciding from stale UI here was the actual
-    // bug: it could try to create a like that already existed, which the
-    // rules correctly reject as an illegal edit (allow update: if false).
     const snap = await getDoc(ref);
     if (snap.exists()) {
       await deleteDoc(ref);
     } else {
       await setDoc(ref, { likedAt: serverTimestamp() });
     }
-    btn.disabled = false; // the listener re-fires on its own and repaints count + color
+    btn.disabled = false;
   } catch (error) {
     console.error("Like toggle failed:", error);
     btn.disabled = false;
@@ -275,119 +285,116 @@ async function toggleLike(imageId, btn) {
   }
 }
 
-// One live listener per photo's likes subcollection. Fires immediately with
-// the locally-applied change the instant you tap (before the server even
-// confirms it), and fires again -- on its own, no refresh needed -- whenever
-// anyone else, on any other device, likes or unlikes that same photo.
-//
-// If the listener can't connect (most commonly: firestore.rules edited but
-// not actually published yet), this used to fail silently into the browser
-// console where nobody would ever see it. Now it retries a few times with a
-// growing delay (covers the ordinary case of rules still propagating right
-// after publishing), and if it's still failing after that, it says so
-// directly on the button instead of leaving it stuck on "–" forever.
-function watchLikesFor(item, btn, attempt = 0) {
-  delete btn.dataset.retry;
-  const likesRef = collection(db, "gallery", item.id, "likes");
-  const unsub = onSnapshot(
-    likesRef,
-    (snapshot) => {
-      const liked = currentUid ? snapshot.docs.some((d) => d.id === currentUid) : false;
-      updateLikeButton(btn, snapshot.size, liked);
-    },
-    (error) => {
-      console.error(`Likes listener failed for ${item.id} (attempt ${attempt + 1}):`, error);
-      const stillCurrent = likeUnsubscribes.includes(unsub);
-      if (!stillCurrent) return; // page moved on (re-render/cleanup) -- drop this attempt
-
-      if (attempt < 3) {
-        setTimeout(() => {
-          const idx = likeUnsubscribes.indexOf(unsub);
-          if (idx === -1) return; // cleared during the wait -- don't resurrect it
-          likeUnsubscribes[idx] = watchLikesFor(item, btn, attempt + 1);
-        }, 1500 * (attempt + 1));
-        return;
-      }
-
-      btn.classList.remove("is-loading");
-      const countEl = btn.querySelector(".like-count");
-      countEl.textContent = error.code === "permission-denied" ? "setup?" : "offline";
-      btn.title = error.code === "permission-denied"
-        ? "Likes aren't set up yet -- tap to retry, or check firestore.rules is published"
-        : "Couldn't connect -- tap to retry";
-      btn.dataset.retry = "true"; // clicking now retries the connection instead of toggling a like
-    }
-  );
-  return unsub;
-}
-
 let likeUnsubscribes = [];
+const likeListenerMap = new Map();
 
 function clearLikeListeners() {
-  likeUnsubscribes.forEach((unsub) => unsub());
+  likeUnsubscribes.forEach((unsubscribe) => unsubscribe());
   likeUnsubscribes = [];
+  likeListenerMap.clear();
 }
 
-async function watchAllLikes() {
+function watchLikesFor(item, btn) {
+  const likesQuery = query(collection(db, "gallery", item.id, "likes"));
+  return onSnapshot(
+    likesQuery,
+    (snapshot) => {
+      const count = snapshot.size;
+      const liked = currentUid ? snapshot.docs.some((d) => d.id === currentUid) : false;
+      btn.dataset.retry = "false";
+      updateLikeButton(btn, count, liked);
+    },
+    (error) => {
+      console.warn(`Likes unavailable for ${item.id}:`, error);
+      btn.classList.remove("is-loading");
+      btn.disabled = false;
+      btn.title = "Likes are temporarily unavailable — tap to try again";
+      btn.dataset.retry = "true";
+    }
+  );
+}
+
+function watchAllLikes() {
+  if (!currentUid || !items.length) return;
   clearLikeListeners();
-  try {
-    await ensureSignedIn();
-  } catch (error) {
-    console.warn("Sign-in not ready -- likes will show once it connects:", error);
-  }
-  items.forEach((item) => {
-    const btn = listEl.querySelector(`.like-btn[data-id="${item.id}"]`);
-    if (!btn) return;
-    likeUnsubscribes.push(watchLikesFor(item, btn));
+  listEl.querySelectorAll(".like-btn").forEach((btn) => {
+    const item = items.find((i) => i.id === btn.dataset.id);
+    if (!item) return;
+    const unsubscribe = watchLikesFor(item, btn);
+    likeUnsubscribes.push(unsubscribe);
+    likeListenerMap.set(item.id, unsubscribe);
   });
 }
 
-// ---------- Live gallery list ----------
-function render(snapshot) {
-  if (snapshot.empty) {
-    allItems = [];
-    items = [];
-    listEl.innerHTML = "";
-    emptyEl.hidden = false;
-    emptyEl.textContent = "No project photos yet — check back soon.";
-    return;
-  }
+// ---------- Live category + gallery data ----------
+function startCategoryListener() {
+  onSnapshot(
+    collection(db, "categories"),
+    (snapshot) => {
+      const next = snapshot.docs
+        .map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            label: String(data.name || "").trim() || humanizeCategoryId(docSnap.id),
+            order: Number.isFinite(data.order) ? data.order : 999,
+          };
+        })
+        .filter((category) => category.id !== "all")
+        .sort((a, b) => ((a.order - b.order) || a.label.localeCompare(b.label)));
 
-  allItems = snapshot.docs.map((docSnap) => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      imageData: data.imageData,
-      alt: data.alt || "N.D. Flow Plumbing Co. completed project",
-      caption: data.caption || "",
-      category: categoryOf(data),
-      dateLabel: formatDate(data.createdAt) || "Project",
-    };
-  });
-  paintList();
+      categories = next.length ? next : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+      rebuildCategoryMap();
+      categoriesReady = true;
+      if (activeFilter !== "all" && !categoryMap.has(activeFilter)) activeFilter = "all";
+      paintFilterBar();
+      paintList();
+    },
+    (error) => {
+      console.warn("Category listener unavailable:", error);
+      categoriesReady = false;
+      paintFilterBar();
+      paintList();
+    }
+  );
 }
 
-try {
+function startGalleryListener() {
   const galleryQuery = query(collection(db, "gallery"), orderBy("order", "desc"));
   onSnapshot(
     galleryQuery,
-    render,
+    (snapshot) => {
+      allItems = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        const created = data.createdAt || data.updatedAt;
+        return {
+          id: docSnap.id,
+          ...data,
+          category: categoryOf(data),
+          dateLabel: formatDate(created) || "",
+          alt: data.alt || "N.D. Flow Plumbing Co. project",
+        };
+      });
+      paintList();
+    },
     (error) => {
-      console.warn("Recent Work listener failed:", error);
-      items = [];
+      console.warn("Live Recent Work gallery unavailable:", error);
+      clearLikeListeners();
       listEl.innerHTML = "";
       emptyEl.hidden = false;
-      emptyEl.textContent = "Couldn't load projects right now — please check back shortly.";
+      emptyEl.textContent = "We couldn't load the project gallery right now — please try again shortly.";
     }
   );
-} catch (error) {
-  console.warn("Recent Work not started:", error);
 }
 
 if (filterBar) {
   filterBar.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-work-filter]");
     if (!btn) return;
-    setFilter(btn.dataset.workFilter);
+    setFilter(btn.dataset.workFilter || "all");
   });
 }
+
+paintFilterBar();
+startCategoryListener();
+startGalleryListener();
