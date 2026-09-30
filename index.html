@@ -29,7 +29,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="styles.css?v=14" />
+<link rel="stylesheet" href="styles.css?v=15" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Plumber","name":"N.D. Flow Plumbing Co.","description":"Professional plumbing company providing reliable plumbing services for local, diaspora and international clients.","telephone":"+234-901-683-6967","priceRange":"$$","address":{"@type":"PostalAddress","addressCountry":"NG"},"areaServed":["Nigeria","Worldwide"],"openingHours":"Mo-Su 00:00-23:59","sameAs":["https://instagram.com/n.d.flow_plumbing_co","https://tiktok.com/@n.d.flow_plumbing_co"]}
 </script>
@@ -96,40 +96,80 @@
            data-src="/video/hero-bg.mp4" tabindex="-1"
            disablepictureinpicture disableremoteplayback></video>
   </div>
+  <button type="button" id="hero-video-toggle" class="hero-video-toggle" aria-label="Pause background video" hidden>
+    <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+    <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z"/></svg>
+  </button>
   <script>
-  /* Hero background video: starts once the page has loaded, stays a still image for
-     reduced-motion / Data Saver / 2G visitors, and only plays while the hero is on screen. */
+  /* Hero background video.
+     - Plays for everyone once the page has finished loading. (The old version skipped it on
+       "Data Saver" / "2G" phones - Chrome reports those, the editor browser never does, which is
+       why the video only played in the editor. The file is ~1.2 MB, so that check is gone.)
+     - Only a phone that asks for reduced motion keeps the still image - and even then the small
+       button in the corner lets the visitor start the video with one tap.
+     - Pauses while the hero is off screen or the tab is hidden, and has a Pause/Play button.
+     - If the browser refuses to autoplay, the first tap anywhere starts it. */
   (function () {
     var v = document.getElementById("hero-video");
+    var btn = document.getElementById("hero-video-toggle");
     if (!v) return;
-    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    var stillOnly =
-      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
-      (conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || "")));
-    if (stillOnly) return;
 
-    var started = false, inView = true;
+    var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    var wantPlay = !reduceMotion;          // what the visitor wants right now
+    var started = false, inView = true, failed = false, tapArmed = false;
+
+    function paintButton() {
+      if (!btn) return;
+      btn.classList.toggle("is-paused", !wantPlay);
+      btn.setAttribute("aria-label", wantPlay ? "Pause background video" : "Play background video");
+    }
+    function showButton() { if (btn && !failed) { btn.hidden = false; paintButton(); } }
 
     function sync() {
       if (!started) return;
-      if (inView && !document.hidden) {
+      if (wantPlay && inView && !document.hidden) {
         var p = v.play();
-        if (p && p.catch) p.catch(function () {});
+        if (p && p.catch) p.catch(function (err) {
+          // AbortError just means we paused it ourselves a moment later - ignore that one.
+          if (err && err.name === "NotAllowedError") blocked();
+        });
       } else {
         v.pause();
       }
     }
 
-    function reveal() { v.classList.add("is-playing"); }
+    // The browser refused to autoplay: show the Play button and start on the first tap/key press.
+    function blocked() {
+      wantPlay = false;
+      showButton();
+      if (tapArmed) return;
+      tapArmed = true;
+      var go = function () {
+        document.removeEventListener("pointerup", go, true);
+        document.removeEventListener("keydown", go, true);
+        tapArmed = false;
+        if (!wantPlay) { wantPlay = true; paintButton(); sync(); }
+      };
+      document.addEventListener("pointerup", go, true);
+      document.addEventListener("keydown", go, true);
+    }
 
     function start() {
-      if (started) return;
+      if (started || failed) return;
       started = true;
       v.muted = true;
-      v.addEventListener("loadeddata", reveal);
-      v.addEventListener("playing", reveal);
+      v.addEventListener("playing", function () { v.classList.add("is-playing"); showButton(); });
+      v.addEventListener("error", function () { failed = true; if (btn) btn.hidden = true; });
       v.src = v.getAttribute("data-src");
       sync();
+    }
+
+    if (btn) {
+      btn.addEventListener("click", function () {
+        wantPlay = !wantPlay;
+        paintButton();
+        if (wantPlay && !started) start(); else sync();
+      });
     }
 
     if ("IntersectionObserver" in window) {
@@ -139,7 +179,9 @@
       }).observe(v.parentNode);
     }
     document.addEventListener("visibilitychange", sync);
+    window.addEventListener("pageshow", sync);
 
+    if (reduceMotion) { showButton(); return; }   // still image + a Play button
     if (document.readyState === "complete") start();
     else {
       window.addEventListener("load", start);
