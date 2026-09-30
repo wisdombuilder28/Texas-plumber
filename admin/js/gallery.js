@@ -10,8 +10,6 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  getDocs,
-  setDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
@@ -19,692 +17,560 @@ wireSidebar();
 wireLogout("logout-btn");
 if (window.lucide) lucide.createIcons();
 
-requireAuth(async (user) => {
-  document.getElementById("admin-email").textContent = user.email;
-  startCategoryListener();
+requireAuth((user) => {
+  document.getElementById("admin-email").textContent = user.email || "";
   startGalleryListener();
-  await ensureDefaultCategories();
 });
 
-// Photos are stored as base64 image data directly inside each Firestore document.
-// Firestore caps a document at 1 MiB total, so the encoded image has to stay
-// comfortably under that limit.
+// Photos are stored as base64 image data directly inside each Firestore document --
+// no Firebase Storage, no billing account needed. Firestore caps a document at 1 MiB
+// total, so the encoded image has to stay comfortably under that.
+// KEEP IN SYNC with firestore.rules: MAX_CAPTION and the two category ids are enforced there too.
 const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 const MAX_ENCODED_BYTES = 700 * 1024;
 const MAX_RAW_BYTES = Math.floor((MAX_ENCODED_BYTES * 3) / 4);
+const MAX_CAPTION = 300;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const DATA_IMAGE = /^data:image\/(jpe?g|png|webp|gif|avif);base64,/i;
 const DEFAULT_ALT = "N.D. Flow Plumbing Co. completed project";
-
-// Category documents live in /categories. The two defaults are automatically
-// created the first time an authorised admin opens this page. Existing gallery
-// documents that only have the legacy `category` field continue to work.
-const DEFAULT_CATEGORIES = [
-  { id: "completed", label: "Completed", order: 1 },
-  { id: "in-progress", label: "Still working", order: 2 },
+const CATEGORIES = [
+  { id: "completed", label: "Completed" },
+  { id: "in-progress", label: "Still working" },
 ];
 const DEFAULT_CATEGORY = "completed";
+// In the "All" view "Still working" comes first: those are the jobs that still need attention.
+const GROUP_ORDER = ["in-progress", "completed"];
 
-let categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-let categoryMap = new Map(categories.map((c) => [c.id, c]));
-
-const grid = document.getElementById("gallery-grid-admin");
-const emptyState = document.getElementById("gallery-empty");
-const messageEl = document.getElementById("gallery-message");
-const progressWrap = document.getElementById("upload-progress");
-const progressLabel = document.getElementById("upload-progress-label");
-const progressFill = document.getElementById("upload-progress-fill");
-const fileInput = document.getElementById("gallery-input");
+const $ = (id) => document.getElementById(id);
+const library = $("gallery-library");
+const loadingEl = $("gallery-loading");
+const emptyState = $("gallery-empty");
+const emptyText = $("gallery-empty-text");
+const emptyReset = $("gallery-empty-reset");
+const filterBtns = document.querySelectorAll("[data-filter]");
+const fileInput = $("gallery-input");
 const uploadLabel = document.querySelector(".upload-label");
-const stagingArea = document.getElementById("staging-area");
-const stagingHeadline = document.getElementById("staging-headline");
-const stagingMeta = document.getElementById("staging-meta");
-const stagingList = document.getElementById("staging-list");
-const stagingCount = document.getElementById("staging-count");
-const stagingCancelBtn = document.getElementById("staging-cancel");
-const stagingConfirmBtn = document.getElementById("staging-confirm");
-const categoryList = document.getElementById("category-list");
-const categoryEmpty = document.getElementById("category-empty");
-const categoryForm = document.getElementById("category-form");
-const categoryNameInput = document.getElementById("category-name");
-const adminFilterBar = document.getElementById("admin-filter-bar");
+const stagingArea = $("staging-area");
+const stagingHeadline = $("staging-headline");
+const stagingMeta = $("staging-meta");
+const stagingBulk = $("staging-bulk");
+const stagingList = $("staging-list");
+const stagingCancelBtn = $("staging-cancel");
+const stagingConfirmBtn = $("staging-confirm");
+const progressWrap = $("upload-progress");
+const progressLabel = $("upload-progress-label");
+const progressFill = $("upload-progress-fill");
+const viewer = $("viewer");
+const viewerImg = $("viewer-img");
+const viewerCaption = $("viewer-caption");
+const toastEl = $("toast");
 
-// Files the admin has picked but not yet confirmed --
-// { file, previewUrl, caption, featured, category }
-let pending = [];
-let lastDocs = [];
-let adminFilter = "all";
+// ---------- State ----------
+let docsById = new Map(); // id -> latest Firestore data
+let orderedIds = []; //      ids, newest first (the order Firestore returns)
+const cards = new Map(); //  id -> { root, ...refs }  (each card is built once, then updated in place)
+let filter = "all";
+let loaded = false;
+let pending = []; //         photos picked but not posted yet
+let pendingSeq = 0;
+let busy = false; //         an upload is running
+const deleting = new Set();
 
-function rebuildCategoryMap() {
-  categoryMap = new Map(categories.map((c) => [c.id, c]));
+// ---------- Small helpers ----------
+function el(tag, props, ...kids) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === false || value == null) continue;
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? "" : value);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) node.append(kid);
+  return node;
 }
 
-function sortedCategories() {
-  return categories.slice().sort((a, b) => {
-    const orderDiff = (Number(a.order) || 0) - (Number(b.order) || 0);
-    if (orderDiff !== 0) return orderDiff;
-    return a.label.localeCompare(b.label);
-  });
+// Inline icons for the controls that have no text label -- they must never depend on the icon CDN.
+const ICONS = {
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  trash:
+    '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.innerHTML = ICONS[name]; // static strings above -- never user data
+  return svg;
 }
 
 function categoryOf(data) {
-  const candidate = String(data?.categoryId || data?.category || "").trim();
-  return categoryMap.has(candidate) ? candidate : DEFAULT_CATEGORY;
+  return data?.category === "in-progress" ? "in-progress" : DEFAULT_CATEGORY;
 }
-
-function categoryLabel(id) {
-  return categoryMap.get(id)?.label || DEFAULT_CATEGORIES.find((c) => c.id === id)?.label || humanizeCategoryId(id);
+function labelOf(id) {
+  return CATEGORIES.find((c) => c.id === id)?.label || "Completed";
 }
-
-function humanizeCategoryId(id) {
-  const value = String(id || "").replace(/[-_]+/g, " ").trim();
-  if (!value) return "Completed";
-  return value.replace(/\b\w/g, (char) => char.toUpperCase());
+function shortText(text, max = 40) {
+  const t = String(text || "").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
-
-function showMessage(text, kind = "error") {
-  messageEl.textContent = text;
-  messageEl.hidden = false;
-  messageEl.className = `form-message ${kind}`;
-}
-
-function clearMessage() {
-  messageEl.hidden = true;
-  messageEl.textContent = "";
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
-}
-
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function setProgress(label, pct) {
-  progressWrap.hidden = false;
-  progressLabel.textContent = label;
-  progressFill.style.width = `${pct}%`;
-}
-
-function hideProgress() {
-  progressWrap.hidden = true;
-  progressFill.style.width = "0%";
-}
-
-// ---------- Categories ----------
-async function ensureDefaultCategories() {
-  try {
-    const snapshot = await getDocs(collection(db, "categories"));
-    const existingIds = new Set(snapshot.docs.map((docSnap) => docSnap.id));
-    const missing = DEFAULT_CATEGORIES.filter((category) => !existingIds.has(category.id));
-
-    if (!missing.length) return;
-
-    await Promise.all(
-      missing.map((category) =>
-        setDoc(doc(db, "categories", category.id), {
-          name: category.label,
-          order: category.order,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        })
-      )
-    );
-  } catch (error) {
-    console.error("Default category setup failed:", error);
-    if (error?.code === "permission-denied") {
-      showMessage("Category setup is blocked. Make sure this account is an admin and publish the latest firestore.rules.");
-    }
-  }
-}
-
-function startCategoryListener() {
-  onSnapshot(
-    collection(db, "categories"),
-    (snapshot) => {
-      const next = snapshot.docs
-        .map((docSnap) => {
-          const data = docSnap.data();
-          const label = String(data.name || "").trim();
-          return {
-            id: docSnap.id,
-            label: label || humanizeCategoryId(docSnap.id),
-            order: Number.isFinite(data.order) ? data.order : 999,
-          };
-        })
-        .filter((category) => category.id !== "all")
-        .sort((a, b) => {
-          const orderDiff = a.order - b.order;
-          return orderDiff || a.label.localeCompare(b.label);
-        });
-
-      categories = next.length ? next : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-      rebuildCategoryMap();
-
-      if (!categoryMap.has(adminFilter) && adminFilter !== "all") {
-        adminFilter = "all";
-      }
-
-      paintAdminFilters();
-      paintCategoryManager();
-      paintAdminGrid();
-      if (pending.length) renderStaging();
-    },
-    (error) => {
-      console.error("Category listener failed:", error);
-      // Keep the built-in defaults as a graceful fallback so the existing
-      // gallery remains usable even if category loading is temporarily down.
-      showMessage("Couldn’t load custom categories. Using the default categories for now.");
-    }
-  );
-}
-
-function paintAdminFilters() {
-  if (!adminFilterBar) return;
-  const allCount = lastDocs.length;
-  const buttons = [
-    `<button type="button" class="admin-filter-btn ${adminFilter === "all" ? "is-active" : ""}" data-admin-filter="all" role="tab" aria-selected="${adminFilter === "all" ? "true" : "false"}>All <span class="filter-count">${allCount}</span></button>`,
-    ...sortedCategories().map((category) => {
-      const count = lastDocs.filter((docSnap) => categoryOf(docSnap.data()) === category.id).length;
-      const active = adminFilter === category.id;
-      return `<button type="button" class="admin-filter-btn ${active ? "is-active" : ""}" data-admin-filter="${escapeHtml(category.id)}" role="tab" aria-selected="${active ? "true" : "false"}>${escapeHtml(category.label)} <span class="filter-count">${count}</span></button>`;
-    }),
-  ];
-  adminFilterBar.innerHTML = buttons.join("");
-
-  adminFilterBar.querySelectorAll("[data-admin-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      adminFilter = btn.dataset.adminFilter || "all";
-      paintAdminFilters();
-      paintAdminGrid();
-    });
+// Feedback that stays on screen wherever the admin has scrolled to.
+let toastTimer;
+function toast(text, kind = "success") {
+  clearTimeout(toastTimer);
+  toastEl.textContent = "";
+  toastEl.className = `toast is-${kind}`;
+  toastEl.hidden = false;
+  requestAnimationFrame(() => {
+    toastEl.textContent = text; // set after un-hiding so screen readers announce it
   });
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, kind === "error" ? 8000 : 3500);
 }
+toastEl.addEventListener("click", () => {
+  toastEl.hidden = true;
+});
 
-function paintCategoryManager() {
-  if (!categoryList) return;
-
-  const counts = new Map();
-  lastDocs.forEach((docSnap) => {
-    const id = categoryOf(docSnap.data());
-    counts.set(id, (counts.get(id) || 0) + 1);
-  });
-
-  const list = sortedCategories();
-  categoryEmpty.hidden = Boolean(list.length);
-  categoryList.innerHTML = list.map((category) => {
-    const count = counts.get(category.id) || 0;
-    return `
-      <div class="category-manager-row" data-category-id="${escapeHtml(category.id)}">
-        <div class="category-manager-main">
-          <input type="text" class="category-name-input" value="${escapeHtml(category.label)}" maxlength="40" aria-label="Category name" />
-          <span class="category-item-count">${count} ${count === 1 ? "item" : "items"}</span>
-        </div>
-        <div class="category-manager-actions">
-          <button type="button" class="category-save-btn btn-ghost-dark" data-id="${escapeHtml(category.id)}">Save</button>
-          <button type="button" class="category-delete-btn btn-danger" data-id="${escapeHtml(category.id)}">Delete</button>
-        </div>
-      </div>`;
-  }).join("");
-
-  categoryList.querySelectorAll(".category-save-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const row = btn.closest(".category-manager-row");
-      const input = row?.querySelector(".category-name-input");
-      if (input) renameCategory(btn.dataset.id, input.value, btn, input);
-    });
-  });
-
-  categoryList.querySelectorAll(".category-delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deleteCategory(btn.dataset.id, btn));
-  });
-
-  if (window.lucide) lucide.createIcons();
-}
-
-function normaliseCategoryName(value) {
-  return String(value || "").trim().replace(/\s+/g, " ");
-}
-
-function slugifyCategory(value) {
-  const slug = normaliseCategoryName(value)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-+/g, "-");
-  return slug || "category";
-}
-
-async function addCategory(event) {
-  event.preventDefault();
-  clearMessage();
-  const label = normaliseCategoryName(categoryNameInput?.value);
-  if (label.length < 2) {
-    showMessage("Category name must be at least 2 characters.");
-    return;
-  }
-  if (label.length > 40) {
-    showMessage("Category name must be 40 characters or fewer.");
-    return;
-  }
-  if (label.toLowerCase() === "all") {
-    showMessage('“All” is reserved for the public filter and cannot be a category name.');
-    return;
-  }
-
-  const duplicateName = categories.some((category) => category.label.toLowerCase() === label.toLowerCase());
-  if (duplicateName) {
-    showMessage("That category already exists.");
-    return;
-  }
-
-  const baseId = slugifyCategory(label);
-  let id = baseId;
-  let suffix = 2;
-  while (categoryMap.has(id) || id === "all") {
-    id = `${baseId}-${suffix}`;
-    suffix += 1;
-  }
-
-  const maxOrder = categories.reduce((max, category) => Math.max(max, Number(category.order) || 0), 0);
-  const submitBtn = categoryForm?.querySelector("button[type=submit]");
-  if (submitBtn) submitBtn.disabled = true;
-
-  try {
-    await setDoc(doc(db, "categories", id), {
-      name: label,
-      order: maxOrder + 1,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    categoryNameInput.value = "";
-    showMessage(`“${label}” added.`, "success");
-  } catch (error) {
-    console.error("Category create failed:", error);
-    showMessage(`Couldn't create the category: ${friendlyFirestoreError(error)}`);
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-  }
-}
-
-async function renameCategory(id, nextLabel, btn, input) {
-  const category = categoryMap.get(id);
-  if (!category) return;
-  const label = normaliseCategoryName(nextLabel);
-  if (label.length < 2 || label.length > 40) {
-    showMessage("Category name must be between 2 and 40 characters.");
-    if (input) input.value = category.label;
-    return;
-  }
-  if (label.toLowerCase() === "all") {
-    showMessage('“All” is reserved for the public filter and cannot be a category name.');
-    if (input) input.value = category.label;
-    return;
-  }
-
-  const duplicate = categories.some(
-    (candidate) => candidate.id !== id && candidate.label.toLowerCase() === label.toLowerCase()
-  );
-  if (duplicate) {
-    showMessage("Another category already uses that name.");
-    if (input) input.value = category.label;
-    return;
-  }
-  if (label === category.label) {
-    showMessage("No name change was made.", "success");
-    return;
-  }
-
-  btn.disabled = true;
-  try {
-    await updateDoc(doc(db, "categories", id), {
-      name: label,
-      updatedAt: serverTimestamp(),
-    });
-    showMessage(`Category renamed to “${label}”.`, "success");
-  } catch (error) {
-    console.error("Category rename failed:", error);
-    showMessage(`Couldn't rename the category: ${friendlyFirestoreError(error)}`);
-    if (input) input.value = category.label;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function deleteCategory(id, btn) {
-  const category = categoryMap.get(id);
-  if (!category) return;
-  const inUse = lastDocs.filter((docSnap) => categoryOf(docSnap.data()) === id).length;
-  if (inUse > 0) {
-    showMessage(`“${category.label}” contains ${inUse} ${inUse === 1 ? "media item" : "media items"}. Reassign those items before deleting this category.`);
-    return;
-  }
-
-  if (id === DEFAULT_CATEGORY || id === "in-progress") {
-    const ok = window.confirm(`Delete the default category “${category.label}”? It can be recreated later, but keeping the standard categories is usually safer.`);
-    if (!ok) return;
-  } else if (!window.confirm(`Delete the category “${category.label}”?`)) {
-    return;
-  }
-
-  btn.disabled = true;
-  try {
-    await deleteDoc(doc(db, "categories", id));
-    if (adminFilter === id) adminFilter = "all";
-    showMessage(`Category “${category.label}” deleted.`, "success");
-  } catch (error) {
-    console.error("Category delete failed:", error);
-    showMessage(`Couldn't delete the category: ${friendlyFirestoreError(error)}`);
-    btn.disabled = false;
-  }
-}
-
-// ---------- Live gallery list ----------
-function startGalleryListener() {
-  const galleryQuery = query(collection(db, "gallery"), orderBy("order", "desc"));
-  onSnapshot(
-    galleryQuery,
-    (snapshot) => renderGrid(snapshot),
-    (error) => {
-      console.error("Gallery listener failed:", error);
-      showMessage("Couldn't load the gallery. Check your connection and refresh.");
-    }
-  );
-}
-
-function renderGrid(snapshot) {
-  lastDocs = snapshot.docs;
-  paintAdminFilters();
-  paintCategoryManager();
-  paintAdminGrid();
-}
-
-function categoryOptionsHtml(selected) {
-  return sortedCategories().map(
-    (category) => `<option value="${escapeHtml(category.id)}" ${category.id === selected ? "selected" : ""}>${escapeHtml(category.label)}</option>`
-  ).join("");
-}
-
-function paintAdminGrid() {
-  const docs = lastDocs.filter((docSnap) => {
-    if (adminFilter === "all") return true;
-    return categoryOf(docSnap.data()) === adminFilter;
-  });
-
-  if (!lastDocs.length) {
-    grid.innerHTML = "";
-    emptyState.hidden = false;
-    emptyState.querySelector("p").textContent = 'No photos yet. Tap "Upload photos" above to add your first one.';
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  if (!docs.length) {
-    grid.innerHTML = "";
-    emptyState.hidden = false;
-    emptyState.querySelector("p").textContent = "No photos in this category yet.";
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  emptyState.hidden = true;
-  grid.innerHTML = docs
-    .map((docSnap) => {
-      const d = docSnap.data();
-      const featured = d.featured === true;
-      const category = categoryOf(d);
-      return `
-      <figure class="gallery-admin-item${featured ? " is-featured" : ""}">
-        <img src="${escapeHtml(d.imageData)}" alt="${escapeHtml(d.alt || "")}" loading="lazy" />
-        <span class="cat-badge">${escapeHtml(categoryLabel(category))}</span>
-        ${d.caption ? `<figcaption>${escapeHtml(d.caption)}</figcaption>` : ""}
-        <button type="button" class="feature-btn" data-id="${docSnap.id}" data-featured="${featured ? "1" : "0"}" aria-pressed="${featured ? "true" : "false"}">
-          <i data-lucide="star" class="icon-sm"></i>
-          ${featured ? "On homepage" : "Show on homepage"}
-        </button>
-        <label class="category-select-wrap">
-          <span class="visually-hidden">Category</span>
-          <select class="category-select" data-id="${docSnap.id}" aria-label="Category">
-            ${categoryOptionsHtml(category)}
-          </select>
-        </label>
-        <button type="button" class="btn-danger delete-btn" data-id="${docSnap.id}">
-          <i data-lucide="trash-2" class="icon-sm"></i> Delete
-        </button>
-      </figure>`;
-    })
-    .join("");
-
-  grid.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deletePhoto(btn.dataset.id, btn));
-  });
-  grid.querySelectorAll(".feature-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      toggleFeatured(btn.dataset.id, btn.dataset.featured === "1", btn);
-    });
-  });
-  grid.querySelectorAll(".category-select").forEach((select) => {
-    select.addEventListener("change", () => setCategory(select.dataset.id, select.value, select));
-  });
-  if (window.lucide) lucide.createIcons();
-}
-
-// ---------- Delete ----------
-async function deletePhoto(id, btn) {
-  if (!window.confirm("Delete this photo? It will disappear from the public site immediately.")) return;
-  btn.disabled = true;
-  try {
-    await deleteDoc(doc(db, "gallery", id));
-    showMessage("Photo deleted.", "success");
-  } catch (error) {
-    console.error("Delete failed:", error);
-    showMessage(`Couldn't delete that photo: ${friendlyFirestoreError(error)}`);
-    btn.disabled = false;
-  }
-}
-
-async function setCategory(id, category, select) {
-  const next = categoryMap.has(category) ? category : DEFAULT_CATEGORY;
-  select.disabled = true;
-  try {
-    await updateDoc(doc(db, "gallery", id), {
-      categoryId: next,
-      category: next,
-      updatedAt: serverTimestamp(),
-    });
-    showMessage(`Moved to “${categoryLabel(next)}”.`, "success");
-  } catch (error) {
-    console.error("Category update failed:", error);
-    showMessage(`Couldn't update category: ${friendlyFirestoreError(error)}`);
-    select.disabled = false;
-  }
-}
-
-async function toggleFeatured(id, currentlyFeatured, btn) {
-  btn.disabled = true;
-  try {
-    await updateDoc(doc(db, "gallery", id), {
-      featured: !currentlyFeatured,
-      updatedAt: serverTimestamp(),
-    });
-    showMessage(
-      currentlyFeatured ? "Removed from the homepage. It stays in Recent Work." : "Now showing on the homepage.",
-      "success"
-    );
-  } catch (error) {
-    console.error("Featured toggle failed:", error);
-    showMessage(`Couldn't update homepage status: ${friendlyFirestoreError(error)}`);
-    btn.disabled = false;
-  }
-}
-
-function friendlyFirestoreError(error) {
+// Turns a raw Firestore error into something specific enough to act on.
+function friendlyError(error) {
   switch (error?.code) {
     case "permission-denied":
-      return "blocked — this account isn't recognised as an admin yet, or the latest Firestore rules haven't been published";
+      return "the server refused it. Sign out and back in; if it keeps happening, this account isn't listed as an admin in Firebase.";
     case "unauthenticated":
-      return "you've been signed out — refresh the page and log in again";
+      return "you've been signed out. Refresh the page and log in again.";
     case "unavailable":
     case "deadline-exceeded":
-      return "network issue — check your connection and try again";
+      return "network problem. Check your connection and try again.";
+    case "resource-exhausted":
+      return "Firebase's free daily limit has been reached. Try again later.";
+    case "invalid-argument":
+      return "Firebase rejected the data (the photo may be too big).";
     default:
-      return error?.code ? `failed (${error.code}) — try again` : "failed — try again";
+      return error?.code ? `something went wrong (${error.code}). Try again.` : "something went wrong. Try again.";
   }
 }
 
-// ---------- Staging: pick photos, add optional captions, category and homepage flag ----------
+// ---------- Library: live list, built once per photo and updated in place ----------
+// Photos are big base64 strings. Rebuilding the whole grid on every change (the old approach)
+// re-parses megabytes of HTML and flickers every image; here each card is created once and only
+// the parts that changed are touched, so changing a category never reloads a single photo.
+const groups = {};
+for (const cat of GROUP_ORDER) {
+  const count = el("span", { class: "g-count", text: "0" });
+  const title = el("h3", { class: "g-group-title" }, el("span", { text: labelOf(cat) }), count);
+  const grid = el("ul", { class: "g-grid" });
+  const section = el("section", { class: "g-group", hidden: true, "aria-label": labelOf(cat) }, title, grid);
+  library.append(section);
+  groups[cat] = { section, title, grid, count };
+}
+
+function createCard(id) {
+  const img = el("img", { alt: "", loading: "lazy", decoding: "async" });
+  const media = el("button", { type: "button", class: "g-media", onclick: () => openViewer(id) }, img);
+  const caption = el("p", { class: "g-caption" });
+
+  const radios = CATEGORIES.map((c) => {
+    const input = el("input", { type: "radio", name: `cat-${id}`, value: c.id });
+    input.addEventListener("change", () => {
+      if (input.checked) setCategory(id, c.id);
+    });
+    return { id: c.id, input, label: el("label", { class: "seg-opt" }, input, el("span", { text: c.label })) };
+  });
+  const seg = el("div", { class: "seg", role: "radiogroup" }, radios.map((r) => r.label));
+
+  const homeLabel = el("span");
+  const home = el("button", { type: "button", class: "g-home", "aria-pressed": "false", onclick: () => toggleFeatured(id) }, icon("star"), homeLabel);
+  const del = el("button", { type: "button", class: "g-delete", onclick: () => deletePhoto(id) }, icon("trash"));
+  const body = el("div", { class: "g-body" }, caption, seg, el("div", { class: "g-actions" }, home, del));
+  const root = el("li", { class: "g-card" }, media, body);
+  return { id, root, img, media, caption, seg, radios, home, homeLabel, del, src: null, text: null, category: null, featured: null };
+}
+
+function updateCard(card, d) {
+  const category = categoryOf(d);
+  const featured = d.featured === true;
+  const text = String(d.caption || "").trim();
+
+  if (card.src !== d.imageData) {
+    card.src = d.imageData;
+    // Only ever show real data-URL photos; anything else stays blank.
+    if (typeof d.imageData === "string" && DATA_IMAGE.test(d.imageData)) card.img.src = d.imageData;
+    else card.img.removeAttribute("src");
+  }
+  if (card.text !== text) {
+    card.text = text;
+    card.caption.textContent = text || "No description";
+    card.caption.classList.toggle("is-empty", !text);
+    const what = text ? shortText(text) : "this photo";
+    card.media.setAttribute("aria-label", `View ${what} full size`);
+    card.seg.setAttribute("aria-label", `Category for ${what}`);
+    card.del.setAttribute("aria-label", `Delete ${what}`);
+  }
+  if (card.category !== category) {
+    card.category = category;
+    card.radios.forEach((r) => {
+      r.input.checked = r.id === category;
+    });
+  }
+  if (card.featured !== featured) {
+    card.featured = featured;
+    card.root.classList.toggle("is-featured", featured);
+    card.home.setAttribute("aria-pressed", String(featured));
+    card.homeLabel.textContent = featured ? "On homepage" : "Show on homepage";
+  }
+}
+
+function syncChildren(container, wanted) {
+  wanted.forEach((node, i) => {
+    const current = container.children[i];
+    if (current !== node) container.insertBefore(node, current || null);
+  });
+  while (container.children.length > wanted.length) container.lastElementChild.remove();
+}
+
+function layout() {
+  const counts = { all: orderedIds.length, completed: 0, "in-progress": 0 };
+  for (const id of orderedIds) counts[categoryOf(docsById.get(id))] += 1;
+
+  filterBtns.forEach((btn) => {
+    const key = btn.dataset.filter;
+    btn.setAttribute("aria-pressed", String(key === filter));
+    btn.querySelector("[data-count]").textContent = counts[key];
+  });
+
+  for (const cat of GROUP_ORDER) {
+    const g = groups[cat];
+    const ids = orderedIds.filter((id) => categoryOf(docsById.get(id)) === cat);
+    syncChildren(g.grid, ids.map((id) => cards.get(id).root));
+    g.count.textContent = ids.length;
+    g.title.hidden = filter !== "all"; // the filter button already says which group this is
+    g.section.hidden = !ids.length || (filter !== "all" && filter !== cat);
+  }
+
+  loadingEl.hidden = loaded;
+  const showEmpty = loaded && (counts.all === 0 || counts[filter] === 0);
+  emptyState.hidden = !showEmpty;
+  if (showEmpty) {
+    emptyReset.hidden = counts.all === 0;
+    emptyText.textContent =
+      counts.all === 0
+        ? "No photos yet. Tap “Add photos” above to post your first one."
+        : `No “${labelOf(filter)}” photos yet. Change a photo's category, or add new ones.`;
+  }
+}
+
+function onGallery(snapshot) {
+  loaded = true;
+  const seen = new Set();
+  orderedIds = [];
+  docsById = new Map();
+  snapshot.docs.forEach((docSnap) => {
+    const data = docSnap.data();
+    seen.add(docSnap.id);
+    orderedIds.push(docSnap.id);
+    docsById.set(docSnap.id, data);
+    let card = cards.get(docSnap.id);
+    if (!card) {
+      card = createCard(docSnap.id);
+      cards.set(docSnap.id, card);
+    }
+    updateCard(card, data);
+  });
+  for (const [id, card] of cards) {
+    if (!seen.has(id)) {
+      card.root.remove();
+      cards.delete(id);
+    }
+  }
+  layout();
+}
+
+function startGalleryListener() {
+  const galleryQuery = query(collection(db, "gallery"), orderBy("order", "desc"));
+  onSnapshot(galleryQuery, onGallery, (error) => {
+    console.error("Gallery listener failed:", error);
+    loaded = true;
+    layout();
+    if (!cards.size) {
+      emptyState.hidden = false;
+      emptyReset.hidden = true;
+      emptyText.textContent = "Couldn't load the photos. Check your connection, then refresh this page.";
+    } else {
+      toast("Lost connection to the gallery. Refresh the page to reconnect.", "error");
+    }
+  });
+}
+
+filterBtns.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    filter = btn.dataset.filter || "all";
+    layout();
+  })
+);
+emptyReset.addEventListener("click", () => {
+  filter = "all";
+  layout();
+});
+
+// ---------- Changing a photo ----------
+// The card updates instantly (Firestore applies the change locally first). If the server refuses
+// it, Firestore rolls the card back on its own and we say why.
+async function setCategory(id, next) {
+  const current = docsById.get(id);
+  if (!current || categoryOf(current) === next) return;
+  try {
+    await updateDoc(doc(db, "gallery", id), { category: next, updatedAt: serverTimestamp() });
+    toast(`Moved to “${labelOf(next)}”.`);
+  } catch (error) {
+    console.error("Category update failed:", error);
+    toast(`Couldn't change the category: ${friendlyError(error)}`, "error");
+    const card = cards.get(id);
+    if (card && docsById.get(id)) updateCard(card, docsById.get(id));
+  }
+}
+
+async function toggleFeatured(id) {
+  const current = docsById.get(id);
+  if (!current) return;
+  const next = current.featured !== true;
+  try {
+    await updateDoc(doc(db, "gallery", id), { featured: next, updatedAt: serverTimestamp() });
+    toast(next ? "Now showing on the homepage." : "Removed from the homepage. It stays in Recent Work.");
+  } catch (error) {
+    console.error("Featured toggle failed:", error);
+    toast(`Couldn't update the homepage setting: ${friendlyError(error)}`, "error");
+    const card = cards.get(id);
+    if (card && docsById.get(id)) updateCard(card, docsById.get(id));
+  }
+}
+
+async function deletePhoto(id) {
+  if (deleting.has(id)) return;
+  if (!window.confirm("Delete this photo? It will disappear from the public site immediately.")) return;
+  deleting.add(id);
+  try {
+    await deleteDoc(doc(db, "gallery", id));
+    toast("Photo deleted.");
+  } catch (error) {
+    console.error("Delete failed:", error);
+    toast(`Couldn't delete that photo: ${friendlyError(error)}`, "error");
+  } finally {
+    deleting.delete(id);
+  }
+}
+
+// ---------- Full-size viewer ----------
+function openViewer(id) {
+  const d = docsById.get(id);
+  if (!d || typeof d.imageData !== "string" || !DATA_IMAGE.test(d.imageData)) return;
+  const text = String(d.caption || "").trim();
+  viewerImg.src = d.imageData;
+  viewerImg.alt = text || "Project photo";
+  viewerCaption.textContent = text;
+  viewerCaption.hidden = !text;
+  if (typeof viewer.showModal === "function") viewer.showModal();
+  else viewer.setAttribute("open", "");
+}
+function closeViewer() {
+  if (typeof viewer.close === "function") viewer.close();
+  else viewer.removeAttribute("open");
+}
+viewer.addEventListener("close", () => viewerImg.removeAttribute("src"));
+$("viewer-close").addEventListener("click", closeViewer);
+viewer.addEventListener("click", (e) => {
+  if (e.target === viewer) closeViewer(); // tap outside the photo
+});
+
+// ---------- Adding photos: pick, review, post ----------
 function stageFiles(fileList) {
   const files = Array.from(fileList || []);
+  // Reset the input so picking the very same photo again (after removing it) still fires "change".
+  fileInput.value = "";
   if (!files.length) return;
-  clearMessage();
 
+  const skipped = [];
+  let added = 0;
   for (const file of files) {
     if (!ALLOWED_TYPES.includes(file.type)) {
-      showMessage(`${file.name}: only JPG, PNG, or WebP images are allowed.`);
-      continue;
+      skipped.push(`${file.name}: only JPG, PNG or WebP photos can be added.`);
+    } else if (file.size > MAX_INPUT_BYTES) {
+      skipped.push(`${file.name}: too large to process (max 20 MB).`);
+    } else {
+      addPending(file);
+      added += 1;
     }
-    if (file.size > MAX_INPUT_BYTES) {
-      showMessage(`${file.name}: that file is too large to process (max 20MB).`);
-      continue;
-    }
-    pending.push({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      caption: "",
-      featured: false,
-      category: DEFAULT_CATEGORY,
-    });
   }
-  renderStaging();
+  if (skipped.length === 1) toast(skipped[0], "error");
+  else if (skipped.length > 1) toast(`${skipped.length} files were skipped. Only JPG, PNG or WebP photos under 20 MB can be added.`, "error");
+
+  renderStagingChrome();
+  if (added) stagingArea.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function renderStaging() {
-  if (!pending.length) {
-    stagingArea.hidden = true;
-    stagingList.innerHTML = "";
-    return;
-  }
-  stagingArea.hidden = false;
+function addPending(file) {
+  const p = { pid: ++pendingSeq, file, previewUrl: URL.createObjectURL(file), caption: "", featured: false, category: DEFAULT_CATEGORY };
+  buildStagingRow(p);
+  pending.push(p);
+  stagingList.append(p.row);
+}
 
-  stagingHeadline.textContent = pending.length === 1
-    ? "1 photo ready to post"
-    : `${pending.length} photos ready to post`;
-  const totalBytes = pending.reduce((sum, p) => sum + p.file.size, 0);
-  stagingMeta.textContent = `${formatFileSize(totalBytes)} total`;
-  stagingCount.textContent = pending.length;
+function buildStagingRow(p) {
+  const name = p.file.name;
+  const thumb = el("div", { class: "s-thumb" }, el("img", { src: p.previewUrl, alt: "" }));
+  const fileInfo = el("div", { class: "s-file" }, el("span", { class: "s-name", text: name }), el("span", { class: "s-size", text: formatFileSize(p.file.size) }));
+  const remove = el("button", { type: "button", class: "s-remove", "aria-label": `Remove ${name}`, onclick: () => removePending(p) }, icon("x"));
 
-  stagingList.innerHTML = pending
-    .map(
-      (p, i) => `
-      <div class="staging-item">
-        <div class="staging-media-wrap">
-          <img src="${p.previewUrl}" alt="" class="staging-media" />
-          <button type="button" class="staging-remove" data-index="${i}" aria-label="Remove photo">
-            <i data-lucide="x" class="icon-sm"></i>
-          </button>
-        </div>
-        <div class="staging-file-info">
-          <i data-lucide="image" class="icon-sm"></i>
-          <span>${escapeHtml(p.file.name)}</span>
-          <span class="staging-file-size">${formatFileSize(p.file.size)}</span>
-        </div>
-        <div class="staging-desc-field">
-          <label for="staging-caption-${i}">
-            <span>Description (optional)</span>
-            <span class="staging-counter" id="staging-counter-${i}">${p.caption.length}/300</span>
-          </label>
-          <textarea id="staging-caption-${i}" class="staging-caption-input" data-index="${i}" maxlength="300"
-            autocomplete="off" autocorrect="off" spellcheck="false"
-            placeholder="e.g. Bathroom pipe replacement — Lekki">${escapeHtml(p.caption)}</textarea>
-        </div>
-        <label class="staging-featured">
-          <input type="checkbox" class="staging-featured-input" data-index="${i}" ${p.featured ? "checked" : ""} />
-          <span>Show on homepage</span>
-        </label>
-        <label class="staging-category-select-field">
-          <span>Category</span>
-          <select class="staging-category-select-input" data-index="${i}" aria-label="Category for ${escapeHtml(p.file.name)}">
-            ${categoryOptionsHtml(p.category)}
-          </select>
-        </label>
-      </div>`
-    )
-    .join("");
+  const counter = el("span", { class: "s-counter", text: `0/${MAX_CAPTION}` });
+  const textarea = el("textarea", {
+    class: "s-caption",
+    maxlength: MAX_CAPTION,
+    rows: 3,
+    autocomplete: "off",
+    placeholder: "Describe the job (optional), e.g. Bathroom pipe replacement, Lekki",
+  });
+  textarea.addEventListener("input", () => {
+    p.caption = textarea.value;
+    counter.textContent = `${textarea.value.length}/${MAX_CAPTION}`;
+    counter.classList.toggle("near-limit", textarea.value.length >= MAX_CAPTION * 0.9);
+  });
+  const desc = el("label", { class: "s-desc" }, el("span", { class: "visually-hidden", text: `Description for ${name} (optional)` }), textarea, counter);
 
-  stagingList.querySelectorAll(".staging-caption-input").forEach((textarea) => {
-    textarea.addEventListener("input", (e) => {
-      const i = Number(e.target.dataset.index);
-      pending[i].caption = e.target.value;
-      const counter = document.getElementById(`staging-counter-${i}`);
-      counter.textContent = `${e.target.value.length}/300`;
-      counter.classList.toggle("near-limit", e.target.value.length >= 260);
+  const radios = CATEGORIES.map((c) => {
+    const input = el("input", { type: "radio", name: `scat-${p.pid}`, value: c.id });
+    input.checked = c.id === p.category;
+    input.addEventListener("change", () => {
+      if (input.checked) p.category = c.id;
     });
+    return { id: c.id, input, label: el("label", { class: "seg-opt" }, input, el("span", { text: c.label })) };
   });
-  stagingList.querySelectorAll(".staging-featured-input").forEach((checkbox) => {
-    checkbox.addEventListener("change", (e) => {
-      const i = Number(e.target.dataset.index);
-      pending[i].featured = e.target.checked;
-    });
+  const cat = el("div", { class: "seg s-cat", role: "radiogroup", "aria-label": `Category for ${name}` }, radios.map((r) => r.label));
+
+  const featuredInput = el("input", { type: "checkbox" });
+  featuredInput.addEventListener("change", () => {
+    p.featured = featuredInput.checked;
   });
-  stagingList.querySelectorAll(".staging-category-select-input").forEach((select) => {
-    select.addEventListener("change", (e) => {
-      const i = Number(e.target.dataset.index);
-      pending[i].category = categoryMap.has(e.target.value) ? e.target.value : DEFAULT_CATEGORY;
-    });
-  });
-  stagingList.querySelectorAll(".staging-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const i = Number(btn.dataset.index);
-      URL.revokeObjectURL(pending[i].previewUrl);
-      pending.splice(i, 1);
-      renderStaging();
-    });
-  });
-  if (window.lucide) lucide.createIcons();
+  const home = el("label", { class: "s-home" }, featuredInput, el("span", { text: "Show on homepage" }));
+  const error = el("p", { class: "s-error", role: "alert", hidden: true });
+
+  p.radios = radios;
+  p.errorEl = error;
+  p.row = el("li", { class: "s-row" }, thumb, fileInfo, remove, desc, cat, home, error);
+}
+
+function setRowError(p, message) {
+  p.errorEl.textContent = message;
+  p.errorEl.hidden = !message;
+}
+
+function removePending(p) {
+  if (busy) return;
+  URL.revokeObjectURL(p.previewUrl);
+  p.row.remove();
+  pending = pending.filter((x) => x !== p);
+  renderStagingChrome();
 }
 
 function clearStaging() {
+  if (busy) return;
   pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
   pending = [];
-  renderStaging();
+  stagingList.replaceChildren();
+  renderStagingChrome();
 }
 
-stagingCancelBtn.addEventListener("click", clearStaging);
+function renderStagingChrome() {
+  const n = pending.length;
+  stagingArea.hidden = n === 0;
+  document.body.classList.toggle("has-staging", n > 0);
+  if (!n) return;
+  stagingHeadline.textContent = n === 1 ? "1 photo ready to post" : `${n} photos ready to post`;
+  stagingMeta.textContent = `${formatFileSize(pending.reduce((sum, p) => sum + p.file.size, 0))} total`;
+  stagingConfirmBtn.textContent = n === 1 ? "Post photo" : `Post ${n} photos`;
+  stagingBulk.hidden = n < 2;
+}
+
+document.querySelectorAll("[data-bulk]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const next = btn.dataset.bulk;
+    pending.forEach((p) => {
+      p.category = next;
+      p.radios.forEach((r) => {
+        r.input.checked = r.id === next;
+      });
+    });
+    toast(`All ${pending.length} photos set to “${labelOf(next)}”.`);
+  })
+);
+
+function setBusy(on) {
+  busy = on;
+  stagingArea.classList.toggle("is-busy", on);
+  stagingConfirmBtn.disabled = on;
+  stagingCancelBtn.disabled = on;
+  fileInput.disabled = on;
+  uploadLabel.classList.toggle("disabled", on);
+  if (!on) {
+    progressWrap.hidden = true;
+    progressFill.style.width = "0%";
+  }
+}
+
+function setProgress(label, pct) {
+  progressWrap.hidden = false;
+  progressLabel.textContent = label;
+  progressFill.style.width = `${Math.round(pct)}%`;
+}
 
 // ---------- Compression ----------
+// Re-encodes the photo, shrinking quality first, then dimensions, until it fits MAX_RAW_BYTES.
+// Bounded at 8 attempts so this can never hang.
 async function compressToFit(file) {
-  const bitmap = await createImageBitmap(file);
-  let dimension = 1600;
-  let quality = 0.82;
-  let blob = null;
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-
-    blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (blob && blob.size <= MAX_RAW_BYTES) return blob;
-
-    if (quality > 0.5) {
-      quality = Math.max(0.5, quality - 0.1);
-    } else if (dimension > 500) {
-      dimension = Math.max(500, Math.round(dimension * 0.8));
-      quality = 0.7;
-    }
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch (error) {
+    throw Object.assign(new Error("unreadable"), { code: "unreadable" });
   }
-  return blob;
+  try {
+    let dimension = 1600;
+    let quality = 0.82;
+    let blob = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      canvas.width = canvas.height = 0; // hand the canvas memory back right away (matters on phones)
+      if (blob && blob.size <= MAX_RAW_BYTES) return blob;
+      if (quality > 0.5) {
+        quality = Math.max(0.5, quality - 0.1);
+      } else if (dimension > 500) {
+        dimension = Math.max(500, Math.round(dimension * 0.8));
+        quality = 0.7;
+      }
+    }
+    return blob; // best effort after 8 attempts
+  } finally {
+    if (bitmap.close) bitmap.close(); // the decoded photo can be ~50 MB of memory; the old code never freed it
+  }
 }
 
 function blobToDataURL(blob) {
@@ -716,6 +582,9 @@ function blobToDataURL(blob) {
   });
 }
 
+// Races a promise against a timer so a slow connection can never leave the UI frozen on "Saving...".
+// This only stops the client from *waiting* -- it can't cancel the request already in flight, so on a
+// very slow connection the photo can still appear moments later. The live list reflects reality either way.
 function withTimeout(promise, ms) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -724,76 +593,94 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function uploadErrorText(error) {
+  switch (error?.code) {
+    case "unreadable":
+      return "This file couldn't be read as a photo. Try a different one.";
+    case "too-detailed":
+      return "This photo is too detailed to shrink small enough. Crop it or try another.";
+    case "client-timeout":
+      return "This is taking too long on your connection. It may still post, so check the list below before trying again.";
+    default:
+      return `Not posted: ${friendlyError(error)}`;
+  }
+}
+
 // ---------- Upload ----------
+// Photos that post successfully leave the review list. Any that fail STAY there, with their
+// description and category intact and a red note, so one tap on Post retries just those.
 async function uploadStaged() {
-  if (!pending.length) return;
-  const items = pending.splice(0);
-  renderStaging();
+  if (busy || !pending.length) return;
+  setBusy(true);
+  const queue = [...pending];
+  let posted = 0;
+  let failed = 0;
 
-  fileInput.disabled = true;
-  uploadLabel.classList.add("disabled");
-  stagingConfirmBtn.disabled = true;
-
-  for (let i = 0; i < items.length; i++) {
-    const { file: original, previewUrl, caption, featured, category } = items[i];
-    const label = `(${i + 1}/${items.length}) ${original.name}`;
-    const trimmedCaption = caption.trim();
-    const savedCategory = categoryMap.has(category) ? category : DEFAULT_CATEGORY;
-
+  for (let i = 0; i < queue.length; i++) {
+    const p = queue[i];
+    setRowError(p, "");
+    const step = (label, fraction) => setProgress(`Photo ${i + 1} of ${queue.length}: ${label}`, ((i + fraction) / queue.length) * 100);
     try {
-      setProgress(`Compressing ${label}…`, 30);
-      const compressed = await compressToFit(original);
+      step("shrinking…", 0.1);
+      const blob = await compressToFit(p.file);
+      if (!blob || blob.size > MAX_RAW_BYTES) throw Object.assign(new Error("too-detailed"), { code: "too-detailed" });
 
-      if (!compressed || compressed.size > MAX_RAW_BYTES) {
-        showMessage(`${original.name}: too detailed to shrink small enough. Try a simpler photo or crop it first.`);
-        continue;
-      }
+      step("preparing…", 0.5);
+      const dataUrl = await blobToDataURL(blob);
 
-      setProgress(`Encoding ${label}…`, 65);
-      const dataUrl = await blobToDataURL(compressed);
-
-      setProgress(`Saving ${label}…`, 90);
+      step("saving…", 0.7);
+      const caption = p.caption.trim().slice(0, MAX_CAPTION);
       await withTimeout(
         addDoc(collection(db, "gallery"), {
           imageData: dataUrl,
-          caption: trimmedCaption,
-          alt: trimmedCaption || DEFAULT_ALT,
-          sizeBytes: compressed.size,
+          caption,
+          alt: caption || DEFAULT_ALT,
+          sizeBytes: blob.size,
           order: Date.now(),
-          featured: featured === true,
-          categoryId: savedCategory,
-          category: savedCategory,
+          featured: p.featured === true,
+          category: p.category === "in-progress" ? "in-progress" : DEFAULT_CATEGORY,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
         25000
       );
 
-      setProgress(`Saved ${label}`, 100);
+      posted += 1;
+      URL.revokeObjectURL(p.previewUrl);
+      p.row.remove();
+      pending = pending.filter((x) => x !== p);
     } catch (error) {
+      failed += 1;
       console.error("Upload failed:", error);
-      if (error?.code === "client-timeout") {
-        showMessage(`${original.name}: this is taking too long on the current connection. It may still finish in the background — check the gallery below in a moment before retrying.`);
-      } else {
-        showMessage(`${original.name}: ${friendlyFirestoreError(error)}`);
-      }
-    } finally {
-      URL.revokeObjectURL(previewUrl);
+      setRowError(p, uploadErrorText(error));
     }
   }
 
-  hideProgress();
-  fileInput.disabled = false;
-  uploadLabel.classList.remove("disabled");
-  stagingConfirmBtn.disabled = false;
-  fileInput.value = "";
-  if (messageEl.hidden) showMessage("Upload complete. Recent Work updates automatically. Homepage only shows photos marked “Show on homepage”.", "success");
+  setBusy(false);
+  renderStagingChrome();
+
+  if (posted) {
+    filter = "all"; // make sure the new photos are visible
+    layout();
+  }
+  if (!failed) {
+    toast(posted === 1 ? "Photo posted. It's live on Recent Work." : `${posted} photos posted. They're live on Recent Work.`);
+    library.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else {
+    const first = pending.find((p) => !p.errorEl.hidden);
+    toast(`${posted} posted, ${failed} didn't go through. See the red notes below.`, "error");
+    if (first) first.row.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
 
-categoryForm?.addEventListener("submit", addCategory);
 stagingConfirmBtn.addEventListener("click", uploadStaged);
+stagingCancelBtn.addEventListener("click", clearStaging);
 fileInput.addEventListener("change", (e) => stageFiles(e.target.files));
 
-paintAdminFilters();
-paintCategoryManager();
-paintAdminGrid();
+// Don't lose typed descriptions (or an upload in progress) to an accidental back-swipe.
+window.addEventListener("beforeunload", (e) => {
+  if (busy || pending.length) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});

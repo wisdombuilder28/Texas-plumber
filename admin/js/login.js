@@ -27,9 +27,11 @@ passwordToggle.addEventListener("click", () => {
   if (window.lucide) lucide.createIcons();
 });
 
-// Already signed in? Skip straight to the dashboard.
+// Already signed in as a real account? Skip straight to the dashboard.
+// The public site signs every visitor in anonymously (for the like buttons), so an anonymous
+// session must NOT count -- it used to bounce people off this page before they could log in.
 onAuthStateChanged(auth, (user) => {
-  if (user) window.location.replace("/admin/dashboard.html");
+  if (user && !user.isAnonymous) window.location.replace("/admin/dashboard.html");
 });
 
 function showMessage(text, kind) {

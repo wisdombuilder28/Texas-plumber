@@ -45,70 +45,72 @@
     </header>
 
     <main class="admin-content">
-      <section class="admin-panel gallery-panel">
+      <section class="admin-panel gallery-panel" aria-labelledby="gallery-title">
         <div class="panel-head">
           <div>
-            <h2>Project photos</h2>
-            <p class="panel-sub">Manage the project media library from one place. Assign a category during upload, move existing photos between categories, rename categories, and choose which photos appear on the homepage.</p>
+            <h2 id="gallery-title">Project photos</h2>
+            <p class="panel-sub">Every photo shows on Recent Work. Pick <strong>Completed</strong> or <strong>Still working</strong> for each one, and switch on <strong>Show on homepage</strong> for the few you want on the home page. Tap a photo to see it full size.</p>
           </div>
           <label class="btn-accent upload-label">
-            <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple hidden />
-            <i data-lucide="upload" class="icon-sm"></i> Upload photos
+            <input type="file" id="gallery-input" class="visually-hidden" accept="image/jpeg,image/png,image/webp" multiple />
+            <i data-lucide="image-plus" class="icon-sm"></i> Add photos
           </label>
         </div>
 
         <div id="staging-area" class="staging-area" hidden>
           <div class="staging-card">
-            <div class="staging-card-head">
-              <div class="staging-card-title">
-                <i data-lucide="image-plus" class="icon-sm"></i>
+            <div class="staging-head">
+              <div class="staging-title">
+                <i data-lucide="images" class="icon-sm"></i>
                 <span id="staging-headline">1 photo ready to post</span>
               </div>
-              <span class="staging-card-meta" id="staging-meta"></span>
+              <span class="staging-meta" id="staging-meta"></span>
             </div>
-            <div id="staging-list" class="staging-list"></div>
+            <div class="staging-bulk" id="staging-bulk" hidden>
+              <span class="staging-bulk-label">Set every photo to</span>
+              <button type="button" class="bulk-btn" data-bulk="completed">Completed</button>
+              <button type="button" class="bulk-btn" data-bulk="in-progress">Still working</button>
+            </div>
+            <ul id="staging-list" class="staging-list"></ul>
             <div class="staging-actions">
-              <button type="button" id="staging-cancel" class="btn-ghost-dark">Cancel</button>
-              <button type="button" id="staging-confirm" class="btn-accent">Post <span id="staging-count"></span></button>
+              <div id="upload-progress" class="upload-progress" hidden>
+                <div class="upload-progress-label" id="upload-progress-label"></div>
+                <div class="upload-progress-track"><div class="upload-progress-fill" id="upload-progress-fill"></div></div>
+              </div>
+              <div class="staging-buttons">
+                <button type="button" id="staging-cancel" class="btn-ghost-dark">Cancel</button>
+                <button type="button" id="staging-confirm" class="btn-accent">Post photos</button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div id="upload-progress" class="upload-progress" hidden>
-          <div class="upload-progress-label" id="upload-progress-label"></div>
-          <div class="upload-progress-track"><div class="upload-progress-fill" id="upload-progress-fill"></div></div>
+        <div class="g-filter" id="g-filter" role="group" aria-label="Show photos">
+          <button type="button" class="g-filter-btn" data-filter="all" aria-pressed="true">All <span class="g-count" data-count="all">0</span></button>
+          <button type="button" class="g-filter-btn" data-filter="completed" aria-pressed="false">Completed <span class="g-count" data-count="completed">0</span></button>
+          <button type="button" class="g-filter-btn" data-filter="in-progress" aria-pressed="false">Still working <span class="g-count" data-count="in-progress">0</span></button>
         </div>
 
-        <div id="gallery-message" class="form-message" role="status" hidden></div>
-
-        <section class="category-manager" aria-labelledby="category-manager-title">
-          <div class="category-manager-head">
-            <div>
-              <h3 id="category-manager-title">Media categories</h3>
-              <p>These categories power both this admin library and the filters visitors see on Recent Work.</p>
-            </div>
-            <form id="category-form" class="category-add-form">
-              <label class="visually-hidden" for="category-name">New category name</label>
-              <input id="category-name" name="category" type="text" maxlength="40" autocomplete="off" placeholder="New category name" />
-              <button type="submit" class="btn-accent">Add category</button>
-            </form>
-          </div>
-          <div id="category-list" class="category-list"></div>
-          <p id="category-empty" class="category-empty" hidden>No categories yet. The default categories will be restored when an admin opens this page.</p>
-        </section>
-
-        <div id="admin-filter-bar" class="admin-filter" role="tablist" aria-label="Filter media library"></div>
-
-        <div id="gallery-grid-admin" class="gallery-grid-admin"></div>
+        <p id="gallery-loading" class="gallery-loading">Loading photos…</p>
+        <div id="gallery-library"></div>
         <div id="gallery-empty" class="empty-state" hidden>
           <i data-lucide="image" class="icon"></i>
-          <p>No photos yet. Tap "Upload photos" above to add your first one.</p>
+          <p id="gallery-empty-text"></p>
+          <button type="button" class="btn-ghost-dark" id="gallery-empty-reset" hidden>Show all photos</button>
         </div>
       </section>
     </main>
   </div>
 </div>
 <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="viewer" class="viewer" aria-label="Photo preview">
+  <button type="button" class="viewer-close" id="viewer-close" aria-label="Close preview"><i data-lucide="x" class="icon"></i></button>
+  <img id="viewer-img" alt="" />
+  <p class="viewer-caption" id="viewer-caption" hidden></p>
+</dialog>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script type="module">
