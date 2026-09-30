@@ -29,7 +29,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="styles.css?v=14" />
+<link rel="stylesheet" href="styles.css?v=15" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Plumber","name":"N.D. Flow Plumbing Co.","description":"Professional plumbing company providing reliable plumbing services for local, diaspora and international clients.","telephone":"+234-901-683-6967","priceRange":"$$","address":{"@type":"PostalAddress","addressCountry":"NG"},"areaServed":["Nigeria","Worldwide"],"openingHours":"Mo-Su 00:00-23:59","sameAs":["https://instagram.com/n.d.flow_plumbing_co","https://tiktok.com/@n.d.flow_plumbing_co"]}
 </script>
@@ -92,66 +92,48 @@
 
 <section class="hero">
   <div class="hero-bg hero-bg--video" aria-hidden="true">
-    <video id="hero-video" class="hero-video" muted loop playsinline preload="auto"
-           data-src="/video/hero-bg.mp4" tabindex="-1"
+    <video id="hero-video" class="hero-video" autoplay muted loop playsinline webkit-playsinline
+           src="/video/hero-bg.mp4" poster="/assets/hero-poster.jpg"
+           preload="auto" tabindex="-1"
            disablepictureinpicture disableremoteplayback></video>
   </div>
   <script>
-  /* Hero background video: starts once the page has loaded, stays a still image for
-     reduced-motion / Data Saver / 2G visitors, and only plays while the hero is on screen. */
   (function () {
-    var v = document.getElementById("hero-video");
+    const v = document.getElementById("hero-video");
     if (!v) return;
-    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    var stillOnly =
-      (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
-      (conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || "")));
-    if (stillOnly) return;
-
-    var started = false, inView = true;
-
-    function sync() {
-      if (!started) return;
-      if (inView && !document.hidden) {
-        var p = v.play();
-        if (p && p.catch) p.catch(function () {});
-      } else {
-        v.pause();
-      }
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      v.removeAttribute("autoplay");
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+      return;
     }
-
-    function reveal() { v.classList.add("is-playing"); }
-
-    function start() {
-      if (started) return;
-      started = true;
-      v.muted = true;
-      v.addEventListener("loadeddata", reveal);
-      v.addEventListener("playing", reveal);
-      v.src = v.getAttribute("data-src");
-      sync();
-    }
-
+    v.muted = true;
+    v.setAttribute("muted", "");
+    const play = function () {
+      const p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    };
+    play();
+    v.addEventListener("canplay", play);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) v.pause();
+      else play();
+    });
     if ("IntersectionObserver" in window) {
       new IntersectionObserver(function (entries) {
-        inView = entries[entries.length - 1].isIntersecting;
-        sync();
+        if (entries[entries.length - 1].isIntersecting) play();
+        else v.pause();
       }).observe(v.parentNode);
-    }
-    document.addEventListener("visibilitychange", sync);
-
-    if (document.readyState === "complete") start();
-    else {
-      window.addEventListener("load", start);
-      setTimeout(start, 2500);
     }
   })();
   </script>
   <div class="container-tight section-pad hero-inner">
     <div class="hero-left">
-      <span class="hero-eyebrow"><span class="dot"></span> <h5 style="color: #ffffff;">N.D flow </h5> Reliable Plumbing Services · Local, Diaspora &amp; Global Clients</span>
-      <h1 style="text-align: center;">Reliable plumbing services, built with a global outlook.</h1>
-      <p class="lead">N.D. Flow Plumbing Co. We provides dependable plumbing, installation, maintenance and water-system solutions — serving local projects while staying fully open to diaspora and global service opportunities.</p>
+      <span class="hero-eyebrow"><span class="dot"></span> N.D. Flow · Reliable plumbing services · Local, diaspora & global clients</span>
+      <h1>Reliable plumbing services, built with a global outlook.</h1>
+      <p class="lead">N.D. Flow Plumbing Co. provides dependable plumbing, installation, maintenance and water-system solutions — serving local projects while staying fully open to diaspora and global service opportunities.</p>
       <div class="hero-ctas">
         <a href="tel:+2349016836967" class="btn-accent"><i data-lucide="phone" class="icon"></i> Call +234 901 683 6967</a>
         <a href="/contact.html" class="btn-ghost-light">Request Service <i data-lucide="arrow-right" class="icon-sm"></i></a>

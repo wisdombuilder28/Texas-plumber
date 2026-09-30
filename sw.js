@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v14";
+const VERSION = "ndflow-v15";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -51,6 +51,8 @@ function isBypassed(url) {
     url.pathname.startsWith("/admin") ||
     url.pathname.startsWith("/api") ||
     url.pathname.endsWith("-live.js") ||
+    url.pathname.startsWith("/video/") ||
+    url.pathname.endsWith(".mp4") ||
     url.pathname.endsWith("emailjs-config.js") ||
     url.pathname.endsWith("firebase-config.js") ||
     /googleapis|gstatic\.com\/firebasejs|firebaseio|firebasestorage|firestore|identitytoolkit|googletagmanager|google-analytics/.test(
@@ -66,6 +68,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
   if (isBypassed(url)) return;
+  if (req.headers.has("range")) return;
+  if (req.destination === "video" || req.destination === "audio") return;
 
   if (req.mode === "navigate") {
     event.respondWith(
