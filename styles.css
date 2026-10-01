@@ -86,7 +86,7 @@ h1,h2,h3,h4,h5{font-family:var(--font-display);letter-spacing:-0.02em;line-heigh
    prominent on the homepage since it's the same header everywhere. Stays this
    size at every width now — see the 1440px note below for why that's safe. */
 .site-header .brand{--brand-fs:clamp(1.75rem,9.4vw,2.25rem);gap:.7rem;}
-.site-header .brand-text{line-height:1;}
+.site-header .brand-text{font-family:serif;line-height:1;}
 .site-header .brand-mark{width:2.75rem;height:2.75rem;border-radius:.5rem;}
 .site-header .brand-name{font-size:var(--brand-fs);font-weight:800;letter-spacing:-.02em;color:var(--brand-black);-webkit-text-stroke:.035em currentColor;} /* Manrope tops out at 800, the stroke adds the extra weight */
 .site-header .brand-dot{-webkit-text-stroke-color:var(--accent);}
