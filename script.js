@@ -104,22 +104,7 @@ if (areasList) {
   `).join("");
 }
 
-// Mobile menu
-const toggle = document.getElementById("menu-toggle");
-const mobileNav = document.getElementById("mobile-nav");
-if (toggle && mobileNav) {
-  toggle.addEventListener("click", () => {
-    const open = mobileNav.classList.toggle("open");
-    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
-    toggle.innerHTML = open ? iconTag("x") : iconTag("menu");
-    if (window.lucide) lucide.createIcons();
-  });
-  mobileNav.querySelectorAll("a").forEach(a => a.addEventListener("click", () => {
-    mobileNav.classList.remove("open");
-    toggle.innerHTML = iconTag("menu");
-    if (window.lucide) lucide.createIcons();
-  }));
-}
+// Mobile menu: see nav.js (shared by every page).
 
 // Contact form is handled by contact-live.js so requests actually reach Firestore.
 
