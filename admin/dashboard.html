@@ -1,17 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Dashboard — N.D. Flow Admin</title>
+<title>Analytics — N.D. Flow Admin</title>
 <meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#060f1d" />
 <link rel="icon" href="/assets/logo-mark.png" type="image/png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
 <link rel="stylesheet" href="/admin/admin.css" />
+<link rel="stylesheet" href="/admin/dashboard.css" />
+<script>try{var t=localStorage.getItem("nd-admin-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
-<body class="admin-body">
+<body class="admin-body dash">
 
 <div class="auth-loading"><span class="spinner"></span> Loading…</div>
 
@@ -35,29 +38,78 @@
   </aside>
 
   <div class="admin-main">
-    <header class="admin-topbar">
-      <button id="sidebar-toggle" class="icon-btn" aria-label="Open menu"><i data-lucide="menu" class="icon"></i></button>
-      <h1>Overview</h1>
-      <div class="admin-topbar-right">
-        <span id="admin-email" class="admin-user-email"></span>
-        <button id="logout-btn" class="btn-ghost-dark"><i data-lucide="log-out" class="icon-sm"></i> Log out</button>
+    <div class="dash-head">
+      <header class="admin-topbar">
+        <button id="sidebar-toggle" class="icon-btn" aria-label="Open menu"><i data-lucide="menu" class="icon"></i></button>
+        <a class="dash-brand" href="/admin/dashboard.html"><img src="/assets/logo-mark.png" alt="" /><span>ND Flow<small>Plumbing Co.</small></span></a>
+        <div class="admin-topbar-right">
+          <span id="admin-email" class="admin-user-email"></span>
+          <button id="theme-btn" class="icon-btn" aria-label="Switch light or dark theme"><i data-lucide="sun-moon" class="icon"></i></button>
+          <button id="logout-btn" class="icon-btn" aria-label="Log out"><i data-lucide="log-out" class="icon"></i></button>
+        </div>
+      </header>
+      <div class="dash-title">
+        <div>
+          <h1>Analytics</h1>
+          <p>Your website performance at a glance.</p>
+        </div>
+        <div class="dash-meta">
+          <span class="live-pill" id="live-pill" data-state="loading"><i></i><b>Loading</b></span>
+          <button class="refresh" id="refresh-btn" type="button" aria-label="Refresh numbers"><i data-lucide="refresh-cw" class="icon-sm"></i><span id="updated">Refresh</span></button>
+        </div>
       </div>
-    </header>
+    </div>
 
-    <main class="admin-content">
-      <p id="stats-status" class="stats-status" hidden></p>
-      <section class="stats-grid" id="stats-grid"></section>
+    <main class="admin-content dash-content">
+      <p id="dash-note" class="dash-note" hidden></p>
 
-      <section class="admin-panel">
-        <h2>Quick actions</h2>
-        <a href="/admin/gallery.html" class="admin-quick-action">
-          <span>Manage gallery photos</span>
-          <i data-lucide="arrow-right" class="icon-sm"></i>
-        </a>
+      <section class="kpis" id="kpis" aria-label="Key numbers"></section>
+
+      <section class="dcard" id="traffic" data-metric="u">
+        <div class="card-h">
+          <div><h2>Website traffic</h2><p id="traffic-sub">Visitors over the last 7 days</p></div>
+          <div class="tabs" role="group" aria-label="Time range">
+            <button type="button" data-range="7" aria-pressed="true">7D</button>
+            <button type="button" data-range="30" aria-pressed="false">30D</button>
+            <button type="button" data-range="90" aria-pressed="false">90D</button>
+            <button type="button" data-range="365" aria-pressed="false">1Y</button>
+          </div>
+        </div>
+        <div class="tabs" role="group" aria-label="Metric">
+          <button type="button" data-metric="u" aria-pressed="true">Visitors</button>
+          <button type="button" data-metric="v" aria-pressed="false">Page views</button>
+        </div>
+        <div class="chart" id="chart"></div>
+        <div class="stats3" id="traffic-stats"></div>
+      </section>
+
+      <div class="split">
+        <section class="dcard">
+          <div class="card-h"><div><h2>Visitors by day</h2><p>The last 7 days</p></div></div>
+          <div class="bars" id="bars"></div>
+        </section>
+        <section class="dcard">
+          <div class="card-h"><div><h2>Traffic sources</h2><p id="src-sub">Where your visits come from</p></div></div>
+          <div id="sources"></div>
+        </section>
+      </div>
+
+      <section class="dcard">
+        <div class="card-h"><div><h2>Quick actions</h2><p>Manage your website and content</p></div></div>
+        <div class="quick">
+          <a class="qa" href="/admin/gallery.html"><span><i data-lucide="image" class="icon-sm"></i></span><div><b>Manage gallery</b><small>Add or update photos</small></div><i data-lucide="chevron-right" class="icon-sm"></i></a>
+          <a class="qa" href="/" target="_blank" rel="noopener"><span><i data-lucide="globe" class="icon-sm"></i></span><div><b>View live site</b><small>Opens in a new tab</small></div><i data-lucide="chevron-right" class="icon-sm"></i></a>
+        </div>
       </section>
     </main>
   </div>
 </div>
+
+<nav class="bnav" aria-label="Admin">
+  <a href="/admin/dashboard.html" class="on"><i data-lucide="layout-dashboard" class="icon"></i>Analytics</a>
+  <a href="/admin/gallery.html"><i data-lucide="image" class="icon"></i>Gallery</a>
+  <a href="/" target="_blank" rel="noopener"><i data-lucide="globe" class="icon"></i>Live site</a>
+</nav>
 <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>

@@ -341,11 +341,53 @@ function readMetric(report, metricIndex) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function addMonthSpans(today) {
+  // month so far, plus the same number of days in the previous month
+  const [y, m, day] = today.split("-").map(Number);
+  const prevLen = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  return {
+    cur: { startDate: `${today.slice(0, 7)}-01`, endDate: today },
+    prev: {
+      startDate: iso(new Date(Date.UTC(y, m - 2, 1))),
+      endDate: iso(new Date(Date.UTC(y, m - 2, Math.min(day, prevLen)))),
+    },
+  };
+}
+
+// GA4 adds a "dateRange" dimension (date_range_0, date_range_1 ...) when a request has several date ranges.
+function rows(report) {
+  const di = (report?.dimensionHeaders || []).findIndex((h) => h.name === "dateRange");
+  return (report?.rows || []).map((row) => {
+    const dims = (row.dimensionValues || []).map((v) => v.value);
+    return {
+      range: di >= 0 ? Number((/(\d+)$/.exec(dims[di]) || [])[1] || 0) : 0,
+      dims: dims.filter((_, i) => i !== di),
+      metrics: (row.metricValues || []).map((v) => Number(v.value) || 0),
+    };
+  });
+}
+
+function channelBucket(name) {
+  const n = String(name || "");
+  if (n === "Direct") return "direct";
+  if (/Search|Shopping/.test(n)) return "search";
+  if (/Social|Video/.test(n)) return "social";
+  if (/Referral|Affiliates/.test(n)) return "referral";
+  return "other";
+}
+
 async function fetchGa4Summary(propertyId, serviceAccount) {
   const accessToken = await getGoogleAccessToken(serviceAccount, [
     ANALYTICS_READONLY,
     DATASTORE,
   ]);
+  const today = todayInLagos();
+  const month = addMonthSpans(today);
+  const last = (n) => ({ startDate: `${n - 1}daysAgo`, endDate: "today" });
+  const SPANS = [7, 30, 90, 365];
+  const users = { name: "totalUsers" };
+  const views = { name: "screenPageViews" };
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:batchRunReports`,
@@ -357,20 +399,16 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
       },
       body: JSON.stringify({
         requests: [
-          {
-            dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }],
-            metrics: [{ name: "totalUsers" }, { name: "screenPageViews" }],
-          },
-          {
-            dateRanges: [{ startDate: "today", endDate: "today" }],
-            metrics: [{ name: "totalUsers" }],
-          },
-          {
-            dateRanges: [
-              { startDate: startOfMonthLagos(), endDate: "today" },
-            ],
-            metrics: [{ name: "totalUsers" }],
-          },
+          // 0: all-time totals
+          { dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }], metrics: [users, views] },
+          // 1: last 30 days vs the 30 before
+          { dateRanges: [last(30), { startDate: "59daysAgo", endDate: "30daysAgo" }], metrics: [users, views] },
+          // 2: today, same day last week, month so far, same days last month
+          { dateRanges: [{ startDate: "today", endDate: "today" }, { startDate: "7daysAgo", endDate: "7daysAgo" }, month.cur, month.prev], metrics: [users] },
+          // 3: one row per day for the last 12 months
+          { dateRanges: [last(365)], dimensions: [{ name: "date" }], metrics: [users, views], orderBys: [{ dimension: { dimensionName: "date" } }], limit: 400 },
+          // 4: visits by traffic channel for 7 / 30 / 90 / 365 days
+          { dateRanges: SPANS.map((n) => last(n)), dimensions: [{ name: "sessionDefaultChannelGroup" }], metrics: [{ name: "sessions" }] },
         ],
       }),
     }
@@ -389,12 +427,40 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
   }
 
   const reports = data.reports || [];
+  const pair = (report, count) => {
+    const out = Array.from({ length: count }, () => [0, 0]);
+    for (const r of rows(report)) if (r.range < count) out[r.range] = [r.metrics[0] || 0, r.metrics[1] || 0];
+    return out;
+  };
+  const all = pair(reports[0], 1)[0];
+  const t30 = pair(reports[1], 2);
+  const t2 = pair(reports[2], 4);
+
+  const sources = {};
+  SPANS.forEach((n) => (sources[n] = { direct: 0, search: 0, social: 0, referral: 0, other: 0 }));
+  for (const r of rows(reports[4])) {
+    const n = SPANS[r.range];
+    if (n) sources[n][channelBucket(r.dims[0])] += r.metrics[0];
+  }
 
   return {
-    totalVisitors: readMetric(reports[0], 0),
-    pageViews: readMetric(reports[0], 1),
-    visitorsToday: readMetric(reports[1], 0),
-    visitorsThisMonth: readMetric(reports[2], 0),
+    totalVisitors: all[0],
+    pageViews: all[1],
+    visitorsToday: t2[0][0],
+    visitorsThisMonth: t2[2][0],
+    trends: {
+      visitors30: [t30[0][0], t30[1][0]],
+      views30: [t30[0][1], t30[1][1]],
+      today: [t2[0][0], t2[1][0]],
+      month: [t2[2][0], t2[3][0]],
+    },
+    series: rows(reports[3]).map((r) => ({
+      d: `${r.dims[0].slice(0, 4)}-${r.dims[0].slice(4, 6)}-${r.dims[0].slice(6, 8)}`,
+      u: r.metrics[0],
+      v: r.metrics[1],
+    })),
+    asOf: today,
+    sources,
     generatedAt: new Date().toISOString(),
   };
 }
