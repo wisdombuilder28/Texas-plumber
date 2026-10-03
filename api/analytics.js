@@ -130,10 +130,6 @@ function todayInLagos() {
   }
 }
 
-function startOfMonthLagos() {
-  return `${todayInLagos().slice(0, 7)}-01`;
-}
-
 function base64url(input) {
   return Buffer.from(input)
     .toString("base64")
@@ -334,13 +330,6 @@ async function verifyAdmin(req, serviceAccount) {
   return { ok: true, uid };
 }
 
-function readMetric(report, metricIndex) {
-  const row = report?.rows?.[0];
-  const value = row?.metricValues?.[metricIndex]?.value;
-  const number = Number(value ?? 0);
-  return Number.isFinite(number) ? number : 0;
-}
-
 function addMonthSpans(today) {
   // month so far, plus the same number of days in the previous month
   const [y, m, day] = today.split("-").map(Number);
@@ -388,6 +377,8 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
   const SPANS = [7, 30, 90, 365];
   const users = { name: "totalUsers" };
   const views = { name: "screenPageViews" };
+  const [ty, tm] = today.split("-").map(Number);
+  const monthsFrom = new Date(Date.UTC(ty, tm - 12, 1)).toISOString().slice(0, 10); // first day, 11 months back
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:batchRunReports`,
@@ -399,12 +390,12 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
       },
       body: JSON.stringify({
         requests: [
-          // 0: all-time totals
-          { dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }], metrics: [users, views] },
-          // 1: last 30 days vs the 30 before
-          { dateRanges: [last(30), { startDate: "59daysAgo", endDate: "30daysAgo" }], metrics: [users, views] },
-          // 2: today, same day last week, month so far, same days last month
-          { dateRanges: [{ startDate: "today", endDate: "today" }, { startDate: "7daysAgo", endDate: "7daysAgo" }, month.cur, month.prev], metrics: [users] },
+          // 0: all-time totals, last 30 days, and the 30 days before
+          { dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }, last(30), { startDate: "59daysAgo", endDate: "30daysAgo" }], metrics: [users, views] },
+          // 1: unique visitors per calendar month (feeds the month picker)
+          { dateRanges: [{ startDate: monthsFrom, endDate: "today" }], dimensions: [{ name: "yearMonth" }], metrics: [users], orderBys: [{ dimension: { dimensionName: "yearMonth" } }], limit: 24 },
+          // 2: month so far, and the same days last month
+          { dateRanges: [month.cur, month.prev], metrics: [users] },
           // 3: one row per day for the last 12 months
           { dateRanges: [last(365)], dimensions: [{ name: "date" }], metrics: [users, views], orderBys: [{ dimension: { dimensionName: "date" } }], limit: 400 },
           // 4: visits by traffic channel for 7 / 30 / 90 / 365 days
@@ -432,9 +423,10 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
     for (const r of rows(report)) if (r.range < count) out[r.range] = [r.metrics[0] || 0, r.metrics[1] || 0];
     return out;
   };
-  const all = pair(reports[0], 1)[0];
-  const t30 = pair(reports[1], 2);
-  const t2 = pair(reports[2], 4);
+  const p0 = pair(reports[0], 3);
+  const all = p0[0];
+  const t30 = [p0[1], p0[2]];
+  const t2 = pair(reports[2], 2);
 
   const sources = {};
   SPANS.forEach((n) => (sources[n] = { direct: 0, search: 0, social: 0, referral: 0, other: 0 }));
@@ -443,22 +435,24 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
     if (n) sources[n][channelBucket(r.dims[0])] += r.metrics[0];
   }
 
+  const ymd = (s) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  const series = rows(reports[3]).map((r) => ({ d: ymd(r.dims[0]), u: r.metrics[0], v: r.metrics[1] }));
+  // "Today" and "same day last week" come from the same daily rows the graphs draw, so a card and its graph can't disagree.
+  const dayU = (back) => series.find((r) => r.d === new Date(Date.parse(`${today}T00:00:00Z`) - back * 864e5).toISOString().slice(0, 10))?.u || 0;
+
   return {
     totalVisitors: all[0],
     pageViews: all[1],
-    visitorsToday: t2[0][0],
-    visitorsThisMonth: t2[2][0],
+    visitorsToday: dayU(0),
+    visitorsThisMonth: t2[0][0],
     trends: {
       visitors30: [t30[0][0], t30[1][0]],
       views30: [t30[0][1], t30[1][1]],
-      today: [t2[0][0], t2[1][0]],
-      month: [t2[2][0], t2[3][0]],
+      today: [dayU(0), dayU(7)],
+      month: [t2[0][0], t2[1][0]],
     },
-    series: rows(reports[3]).map((r) => ({
-      d: `${r.dims[0].slice(0, 4)}-${r.dims[0].slice(4, 6)}-${r.dims[0].slice(6, 8)}`,
-      u: r.metrics[0],
-      v: r.metrics[1],
-    })),
+    series,
+    months: rows(reports[1]).map((r) => ({ m: `${r.dims[0].slice(0, 4)}-${r.dims[0].slice(4, 6)}`, u: r.metrics[0] })),
     asOf: today,
     sources,
     generatedAt: new Date().toISOString(),
