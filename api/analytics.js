@@ -330,20 +330,6 @@ async function verifyAdmin(req, serviceAccount) {
   return { ok: true, uid };
 }
 
-function addMonthSpans(today) {
-  // month so far, plus the same number of days in the previous month
-  const [y, m, day] = today.split("-").map(Number);
-  const prevLen = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();
-  const iso = (d) => d.toISOString().slice(0, 10);
-  return {
-    cur: { startDate: `${today.slice(0, 7)}-01`, endDate: today },
-    prev: {
-      startDate: iso(new Date(Date.UTC(y, m - 2, 1))),
-      endDate: iso(new Date(Date.UTC(y, m - 2, Math.min(day, prevLen)))),
-    },
-  };
-}
-
 // GA4 adds a "dateRange" dimension (date_range_0, date_range_1 ...) when a request has several date ranges.
 function rows(report) {
   const di = (report?.dimensionHeaders || []).findIndex((h) => h.name === "dateRange");
@@ -372,13 +358,18 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
     DATASTORE,
   ]);
   const today = todayInLagos();
-  const month = addMonthSpans(today);
-  const last = (n) => ({ startDate: `${n - 1}daysAgo`, endDate: "today" });
-  const SPANS = [7, 30, 90, 365];
+  // Counting starts on this day, so earlier test traffic is never requested. Override with ANALYTICS_SINCE=YYYY-MM-DD in Vercel (e.g. launch day).
+  const wanted = /^\d{4}-\d{2}-\d{2}$/.test(process.env.ANALYTICS_SINCE || "") ? process.env.ANALYTICS_SINCE : "2026-10-05";
+  const since = wanted > today ? today : wanted;
+  const ago = (n) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 864e5).toISOString().slice(0, 10);
+  const span = (from, to) => ({ startDate: from < since ? since : from, endDate: to }); // never reaches back past `since`
+  const SPANS = [7, 30, 90];
   const users = { name: "totalUsers" };
-  const views = { name: "screenPageViews" };
   const [ty, tm] = today.split("-").map(Number);
   const monthsFrom = new Date(Date.UTC(ty, tm - 12, 1)).toISOString().slice(0, 10); // first day, 11 months back
+  const canCompare = ago(13) >= since; // only compare with a full previous week that we actually counted
+  const ranges0 = [span(ago(6), today)];
+  if (canCompare) ranges0.push({ startDate: ago(13), endDate: ago(7) });
 
   const res = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:batchRunReports`,
@@ -390,16 +381,16 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
       },
       body: JSON.stringify({
         requests: [
-          // 0: all-time totals, last 30 days, and the 30 days before
-          { dateRanges: [{ startDate: "3650daysAgo", endDate: "today" }, last(30), { startDate: "59daysAgo", endDate: "30daysAgo" }], metrics: [users, views] },
+          // 0: visitors in the last 7 days, and the 7 days before (only once we have a full week of data)
+          { dateRanges: ranges0, metrics: [users] },
           // 1: unique visitors per calendar month (feeds the month picker)
-          { dateRanges: [{ startDate: monthsFrom, endDate: "today" }], dimensions: [{ name: "yearMonth" }], metrics: [users], orderBys: [{ dimension: { dimensionName: "yearMonth" } }], limit: 24 },
-          // 2: month so far, and the same days last month
-          { dateRanges: [month.cur, month.prev], metrics: [users] },
+          { dateRanges: [span(monthsFrom, today)], dimensions: [{ name: "yearMonth" }], metrics: [users], orderBys: [{ dimension: { dimensionName: "yearMonth" } }], limit: 24 },
+          // 2: taps on Call / WhatsApp per day (the site already sends a contact_choice event)
+          { dateRanges: [span(ago(89), today)], dimensions: [{ name: "date" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { matchType: "EXACT", value: "contact_choice" } } }, orderBys: [{ dimension: { dimensionName: "date" } }], limit: 100 },
           // 3: one row per day for the last 12 months
-          { dateRanges: [last(365)], dimensions: [{ name: "date" }], metrics: [users, views], orderBys: [{ dimension: { dimensionName: "date" } }], limit: 400 },
-          // 4: visits by traffic channel for 7 / 30 / 90 / 365 days
-          { dateRanges: SPANS.map((n) => last(n)), dimensions: [{ name: "sessionDefaultChannelGroup" }], metrics: [{ name: "sessions" }] },
+          { dateRanges: [span(ago(364), today)], dimensions: [{ name: "date" }], metrics: [users], orderBys: [{ dimension: { dimensionName: "date" } }], limit: 400 },
+          // 4: visits by traffic channel for 7 / 30 / 90 days
+          { dateRanges: SPANS.map((n) => span(ago(n - 1), today)), dimensions: [{ name: "sessionDefaultChannelGroup" }], metrics: [{ name: "sessions" }] },
         ],
       }),
     }
@@ -423,10 +414,7 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
     for (const r of rows(report)) if (r.range < count) out[r.range] = [r.metrics[0] || 0, r.metrics[1] || 0];
     return out;
   };
-  const p0 = pair(reports[0], 3);
-  const all = p0[0];
-  const t30 = [p0[1], p0[2]];
-  const t2 = pair(reports[2], 2);
+  const p0 = pair(reports[0], ranges0.length);
 
   const sources = {};
   SPANS.forEach((n) => (sources[n] = { direct: 0, search: 0, social: 0, referral: 0, other: 0 }));
@@ -436,23 +424,21 @@ async function fetchGa4Summary(propertyId, serviceAccount) {
   }
 
   const ymd = (s) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  const series = rows(reports[3]).map((r) => ({ d: ymd(r.dims[0]), u: r.metrics[0], v: r.metrics[1] }));
+  const series = rows(reports[3]).map((r) => ({ d: ymd(r.dims[0]), u: r.metrics[0] }));
   // "Today" and "same day last week" come from the same daily rows the graphs draw, so a card and its graph can't disagree.
   const dayU = (back) => series.find((r) => r.d === new Date(Date.parse(`${today}T00:00:00Z`) - back * 864e5).toISOString().slice(0, 10))?.u || 0;
 
+  const months = rows(reports[1]).map((r) => ({ m: `${r.dims[0].slice(0, 4)}-${r.dims[0].slice(4, 6)}`, u: r.metrics[0] }));
+
   return {
-    totalVisitors: all[0],
-    pageViews: all[1],
+    since,
+    visitorsWeek: p0[0][0],
+    visitorsPrevWeek: canCompare ? p0[1][0] : null, // null = no full week of data before the 7 days just gone
     visitorsToday: dayU(0),
-    visitorsThisMonth: t2[0][0],
-    trends: {
-      visitors30: [t30[0][0], t30[1][0]],
-      views30: [t30[0][1], t30[1][1]],
-      today: [dayU(0), dayU(7)],
-      month: [t2[0][0], t2[1][0]],
-    },
+    visitorsThisMonth: months.find((m) => m.m === today.slice(0, 7))?.u || 0,
     series,
-    months: rows(reports[1]).map((r) => ({ m: `${r.dims[0].slice(0, 4)}-${r.dims[0].slice(4, 6)}`, u: r.metrics[0] })),
+    contacts: rows(reports[2]).map((r) => ({ d: ymd(r.dims[0]), c: r.metrics[0] })),
+    months,
     asOf: today,
     sources,
     generatedAt: new Date().toISOString(),

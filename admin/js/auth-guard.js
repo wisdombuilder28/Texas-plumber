@@ -44,6 +44,7 @@ export function requireAuth(onSignedIn) {
     }
     if (startedFor === user.uid) return; // auth state can fire more than once; only start once
     startedFor = user.uid;
+    try { localStorage.setItem("nd_internal", "1"); } catch {} // this device is yours: stop counting its visits
 
     let isAdmin = false;
     try {

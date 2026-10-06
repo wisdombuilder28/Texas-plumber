@@ -8,8 +8,8 @@ wireLogout("logout-btn");
 const $ = (id) => document.getElementById(id);
 const icons = () => window.lucide && lucide.createIcons();
 const nf = new Intl.NumberFormat("en");
-const state = { data: null, series: null, range: 7, metric: "u", w: 0, loaded: false, month: null, menu: false };
-const LABEL = { 7: "last 7 days", 30: "last 30 days", 90: "last 90 days", 365: "last 12 months" };
+const state = { data: null, series: null, range: 7, w: 0, loaded: false, month: null, menu: false };
+const LABEL = { 7: "last 7 days", 30: "last 30 days", 90: "last 90 days" };
 const SOURCES = [
   ["direct", "Direct", "--c-gold"],
   ["search", "Search engines", "--c-green"],
@@ -31,9 +31,6 @@ $("theme-btn").addEventListener("click", () => {
 document.querySelectorAll("button[data-range]").forEach((b) =>
   b.addEventListener("click", () => { state.range = +b.dataset.range; paintTraffic(); paintSources(); })
 );
-document.querySelectorAll("button[data-metric]").forEach((b) =>
-  b.addEventListener("click", () => { state.metric = b.dataset.metric; paintTraffic(); })
-);
 // Month picker (lives on the "Visitors this month" card)
 $("kpis").addEventListener("click", (e) => {
   const pick = e.target.closest(".mpick"), item = e.target.closest(".mmenu button");
@@ -44,7 +41,7 @@ $("kpis").addEventListener("click", (e) => {
   $("kpis").querySelector(".mpick")?.focus();
 });
 document.addEventListener("click", (e) => { // tap anywhere else closes it
-  if (state.menu && e.target.isConnected && !e.target.closest("#kpis .kpi")) { state.menu = false; paintKpis(); }
+  if (state.menu && e.target.isConnected && !e.target.closest(".mpick, .mmenu")) { state.menu = false; paintKpis(); }
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.menu) { state.menu = false; paintKpis(); $("kpis").querySelector(".mpick")?.focus(); }
@@ -82,14 +79,13 @@ function why(status, data, raw) {
   return "Couldn't load analytics (HTTP " + status + ").";
 }
 
-// Fills every one of the last 365 days, including days GA4 had no rows for.
+// Fills every one of the last 365 days, including days GA4 had no rows for. `on` = counted (on or after the start date).
 function expand(d) {
-  const map = new Map(d.series.map((r) => [r.d, r]));
-  const end = Date.parse(d.asOf + "T00:00:00Z");
+  const map = new Map(d.series.map((r) => [r.d, r.u]));
+  const end = Date.parse(d.asOf + "T00:00:00Z"), since = Date.parse(d.since + "T00:00:00Z");
   return Array.from({ length: 365 }, (_, i) => {
     const dt = new Date(end - (364 - i) * 864e5);
-    const r = map.get(dt.toISOString().slice(0, 10));
-    return { dt, u: r ? r.u : 0, v: r ? r.v : 0 };
+    return { dt, u: map.get(iso(dt)) || 0, on: dt.getTime() >= since };
   });
 }
 
@@ -129,7 +125,7 @@ async function load(user, retry = true) {
   paintAll();
 }
 
-function paintAll() { paintKpis(); paintTraffic(); paintDays(); paintSources(); }
+function paintAll() { paintGrow(); paintKpis(); paintTraffic(); paintDays(); paintSources(); }
 
 // ---------- drawing helpers ----------
 // Smooth line through points (Catmull-Rom turned into beziers), kept inside [lo, hi] vertically.
@@ -152,14 +148,6 @@ function niceMax(v) {
   return 40 * p;
 }
 
-function delta(pair) {
-  if (!pair) return null;
-  const [cur, prev] = pair;
-  if (!prev) return cur ? { t: "↑ New", c: "up" } : { t: "0%", c: "flat" };
-  const p = Math.round(((cur - prev) / prev) * 100);
-  return { t: (p > 0 ? "↑ +" : p < 0 ? "↓ −" : "") + Math.abs(p) + "%", c: p > 0 ? "up" : p < 0 ? "down" : "flat" };
-}
-
 function spark(vals, id) {
   if (vals.length < 2) vals = [vals[0] || 0, vals[0] || 0];
   const W = 100, H = 32, max = Math.max(...vals, 1);
@@ -173,34 +161,70 @@ function spark(vals, id) {
 // ---------- cards ----------
 const MON = (k, o) => new Date(k + "-01T00:00:00Z").toLocaleDateString("en-GB", { ...o, timeZone: "UTC" });
 const prevMonth = (k) => { const [y, m] = k.split("-").map(Number); return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7); };
+const iso = (dt) => dt.toISOString().slice(0, 10);
 
-// Everything the "Visitors this month" card shows for the chosen month (null = this month so far).
-// The number, the change and the graph all describe that same month: the graph plots that month's own days.
+// "Visitors this month" for the chosen month (null = this month so far). Number, caption and graph describe that same month.
 function monthView(d, s, pick) {
-  const cur = d.asOf.slice(0, 7), first = s[0].dt.toISOString().slice(0, 10), by = new Map((d.months || []).map((r) => [r.m, r.u]));
+  const cur = d.asOf.slice(0, 7), by = new Map((d.months || []).map((r) => [r.m, r.u]));
   by.set(cur, d.visitorsThisMonth);
-  const keys = [...by.keys()].filter((k) => k <= cur && k + "-01" >= first).sort().reverse().slice(0, 12); // whole months only
+  const keys = [...by.keys()].filter((k) => k <= cur && k >= d.since.slice(0, 7)).sort().reverse().slice(0, 12);
   const sel = keys.includes(pick) ? pick : cur, isCur = sel === cur, before = prevMonth(sel);
+  const known = before + "-01" >= d.since; // only compare with a month we counted in full
   return {
     sel, isCur, cur, keys, by,
-    days: s.filter((p) => p.dt.toISOString().slice(0, 7) === sel).map((p) => p.u),
+    days: s.filter((p) => p.on && iso(p.dt).startsWith(sel)).map((p) => p.u),
     val: by.get(sel) || 0,
-    trend: isCur ? d.trends?.month : [by.get(sel) || 0, by.get(before) || 0],
-    cap: isCur ? "vs same days last month" : "vs " + MON(before, { month: "long" }),
+    cap: (isCur ? "Last month: " : MON(before, { month: "long" }) + ": ") + (known ? nf.format(by.get(before) || 0) : "no data"),
   };
 }
 
+// Taps on Call / WhatsApp this month (event counts add up exactly, unlike unique visitors).
+function contactView(d, s) {
+  const cur = d.asOf.slice(0, 7), before = prevMonth(cur), by = new Map((d.contacts || []).map((r) => [r.d, r.c]));
+  const sum = (k) => [...by].filter(([day]) => day.startsWith(k)).reduce((a, [, c]) => a + c, 0);
+  return {
+    val: sum(cur),
+    days: s.filter((p) => p.on && iso(p.dt).startsWith(cur)).map((p) => by.get(iso(p.dt)) || 0),
+    cap: "This month. Last month: " + (before + "-01" >= d.since ? nf.format(sum(before)) : "no data"),
+  };
+}
+
+// One plain sentence that answers "is the website growing?": last 7 days against the 7 before, in words, no percentages.
+function paintGrow() {
+  const d = state.data, box = $("grow");
+  box.hidden = !d || d.visitorsWeek == null;
+  if (box.hidden) return;
+  const cur = d.visitorsWeek, prev = d.visitorsPrevWeek, people = (n) => (n === 1 ? "1 person" : nf.format(n) + " people");
+  let kind = "", icon = "minus", head, sub;
+  if (prev == null) {
+    head = cur ? people(cur) + " visited in the last 7 days" : "No visitors counted yet";
+    sub = "Counting started on " + fmt(new Date(d.since + "T00:00:00Z"), { day: "numeric", month: "short" }) + ". Once there are two full weeks, this box tells you whether the website is growing.";
+    icon = "clock";
+  } else if (!cur && !prev) {
+    head = "No visitors in the last two weeks"; sub = "Share the website link to start getting visitors."; kind = "down";
+  } else if (cur > prev && cur >= prev * 1.1) {
+    head = "Your website is growing"; sub = people(cur) + " visited in the last 7 days, up from " + prev + " the week before."; kind = "up"; icon = "trending-up";
+  } else if (cur < prev && cur <= prev * 0.9) {
+    head = "A little quieter than last week"; sub = people(cur) + " visited in the last 7 days, " + prev + " the week before."; kind = "down"; icon = "trending-down";
+  } else {
+    head = "Holding steady"; sub = people(cur) + " visited in the last 7 days, " + prev + " the week before.";
+  }
+  box.className = "grow " + kind;
+  box.innerHTML = '<span class="grow-i"><i data-lucide="' + icon + '" class="icon-sm"></i></span><div><b>' + head + "</b><p>" + sub + "</p></div>";
+  icons();
+}
+
 function paintKpis() {
-  const d = state.data, s = state.series, T = d?.trends || {};
-  const mv = d && s ? monthView(d, s, state.month) : null;
-  const items = [ // label, icon, tone, value, [now, before], caption, the days the graph plots
-    ["Total visitors", "users", "", d?.totalVisitors, T.visitors30, "last 30 days vs the 30 before", s && s.slice(-30).map((p) => p.u)],
-    ["Page views", "eye", "violet", d?.pageViews, T.views30, "last 30 days vs the 30 before", s && s.slice(-30).map((p) => p.v)],
-    [null, "calendar-days", "green", mv ? mv.val : d?.visitorsThisMonth, mv ? mv.trend : T.month, mv ? mv.cap : "vs same days last month", mv && mv.days],
-    ["Visitors today", "clock", "amber", d?.visitorsToday, T.today, "vs same day last week", s && s.slice(-7).map((p) => p.u)],
+  const d = state.data, s = state.series;
+  const mv = d && s ? monthView(d, s, state.month) : null, cv = d && s ? contactView(d, s) : null;
+  const yday = s && s[s.length - 2].on ? nf.format(s[s.length - 2].u) : "no data";
+  const items = [ // label, icon, tone, value, caption, days the little graph plots (no graph = null)
+    ["Visitors today", "clock", "amber", d?.visitorsToday, s && "Yesterday: " + yday, null],
+    ["Visitors, last 7 days", "users", "", d?.visitorsWeek, d && "The 7 days before: " + (d.visitorsPrevWeek == null ? "no data" : nf.format(d.visitorsPrevWeek)), s && s.slice(-7).filter((p) => p.on).map((p) => p.u)],
+    [null, "calendar-days", "green", mv ? mv.val : d?.visitorsThisMonth, mv && mv.cap, mv && mv.days],
+    ["Calls & WhatsApp taps", "phone-call", "violet", cv && cv.val, cv && cv.cap, cv && cv.days],
   ];
-  $("kpis").innerHTML = items.map(([label, icon, tone, val, trend, cap, pts], i) => {
-    const dl = delta(trend);
+  $("kpis").innerHTML = items.map(([label, icon, tone, val, cap, pts], i) => {
     let head = label, menu = "";
     if (!label) { // month card: the title doubles as the month picker
       const name = !mv || mv.isCur ? "Visitors this month" : "Visitors in " + MON(mv.sel, { month: "long", year: mv.sel.slice(0, 4) === mv.cur.slice(0, 4) ? undefined : "numeric" });
@@ -216,7 +240,7 @@ function paintKpis() {
       '<div class="kpi-top"><span><i data-lucide="' + icon + '" class="icon-sm"></i></span>' + head + "</div>" + menu +
       '<div class="kpi-val">' + (val == null ? "—" : nf.format(val)) + "</div>" +
       (pts ? spark(pts, "sk" + i) : "") +
-      '<div class="kpi-foot">' + (dl ? '<span class="dl ' + dl.c + '">' + dl.t + "</span>" : "") + "<span>" + cap + "</span></div></article>";
+      '<div class="kpi-foot"><span>' + (cap || "") + "</span></div></article>";
   }).join("");
   icons();
 }
@@ -225,12 +249,11 @@ function paintTraffic() {
   const host = $("chart"), W = host.clientWidth || 320, H = 230;
   state.w = host.clientWidth;
   document.querySelectorAll("button[data-range]").forEach((b) => b.setAttribute("aria-pressed", +b.dataset.range === state.range));
-  document.querySelectorAll("button[data-metric]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.metric === state.metric));
-  $("traffic").dataset.metric = state.metric;
-  $("traffic-sub").textContent = (state.metric === "u" ? "Visitors" : "Page views") + " over the " + LABEL[state.range];
+  $("traffic-sub").textContent = "Visitors over the " + LABEL[state.range];
   if (!state.series) { host.innerHTML = empty(); $("traffic-stats").innerHTML = ""; return; }
 
-  const rows = state.series.slice(-state.range), n = rows.length, key = state.metric;
+  const rows = state.series.filter((r) => r.on).slice(-state.range), n = rows.length, key = "u";
+  if (n < 2) { host.innerHTML = '<p class="empty">Not enough days yet. The chart fills in as days go by.</p>'; $("traffic-stats").innerHTML = ""; return; }
   const vals = rows.map((r) => r[key]);
   const m = { l: 32, r: 12, t: 14, b: 26 }, base = H - m.b;
   const top = niceMax(Math.max(...vals, 1));
@@ -278,10 +301,10 @@ function paintTraffic() {
   svg.addEventListener("pointerleave", () => show(n - 1));
   show(n - 1);
 
-  const sumV = rows.reduce((a, r) => a + r.v, 0), sumU = rows.reduce((a, r) => a + r.u, 0);
+  const sumU = rows.reduce((a, r) => a + r.u, 0), busy = rows.filter((r) => r.u).length;
   const best = rows.reduce((b, r) => (r.u >= b.u ? r : b), rows[0]);
   $("traffic-stats").innerHTML = [
-    ["Page views", nf.format(sumV)],
+    ["Days with visitors", busy + " of " + n],
     ["Avg visitors / day", (sumU / n).toFixed(1)],
     ["Busiest day", best.u ? fmt(best.dt, { day: "numeric", month: "short" }) + " · " + best.u : "—"],
   ].map((s) => "<div><b>" + s[1] + "</b><span>" + s[0] + "</span></div>").join("");

@@ -154,3 +154,12 @@ html[data-theme="light"]{--c-gold:#c28a12;--bg:#f6f4ef;--card:#fff;--line:#e8e4d
 .mmenu button:hover{background:var(--track);}
 .mmenu button[aria-checked="true"]{background:color-mix(in srgb,var(--k) 20%,transparent);}
 .mmenu small{font:inherit;color:var(--muted);}
+
+/* "Is the website growing?" sentence */
+.grow{display:flex;align-items:center;gap:.9rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:1.1rem;background:var(--card);box-shadow:var(--shadow);--k:var(--c-gold);}
+.grow.up{--k:var(--c-green);}
+.grow.down{--k:var(--c-copper);}
+.grow[hidden]{display:none;}
+.grow-i{flex:none;display:grid;place-items:center;width:2.7rem;height:2.7rem;border-radius:50%;color:var(--k);background:color-mix(in srgb,var(--k) 16%,transparent);}
+.grow b{display:block;font:800 1.05rem/1.25 var(--font-display);}
+.grow p{margin:.2rem 0 0;font-size:.85rem;line-height:1.45;color:var(--muted);}
