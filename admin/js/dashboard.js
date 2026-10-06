@@ -163,18 +163,28 @@ const MON = (k, o) => new Date(k + "-01T00:00:00Z").toLocaleDateString("en-GB", 
 const prevMonth = (k) => { const [y, m] = k.split("-").map(Number); return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7); };
 const iso = (dt) => dt.toISOString().slice(0, 10);
 
+// Counting starts on `since`, so the first month is usually partial and anything before it was never counted.
+const sinceText = (d) => fmt(new Date(d.since + "T00:00:00Z"), { day: "numeric", month: "short" });
+const partialFirst = (d) => d.since.slice(8) !== "01";
+
+// How to say "the month before": its number, its number plus the day counting began (first month), or "not counted".
+function lastText(d, before, value) {
+  const first = d.since.slice(0, 7);
+  if (before < first) return "not counted";
+  return nf.format(value(before)) + (before === first && partialFirst(d) ? " (from " + sinceText(d) + ")" : "");
+}
+
 // "Visitors this month" for the chosen month (null = this month so far). Number, caption and graph describe that same month.
 function monthView(d, s, pick) {
-  const cur = d.asOf.slice(0, 7), by = new Map((d.months || []).map((r) => [r.m, r.u]));
+  const cur = d.asOf.slice(0, 7), first = d.since.slice(0, 7), by = new Map((d.months || []).map((r) => [r.m, r.u]));
   by.set(cur, d.visitorsThisMonth);
-  const keys = [...by.keys()].filter((k) => k <= cur && k >= d.since.slice(0, 7)).sort().reverse().slice(0, 12);
+  const keys = [...by.keys()].filter((k) => k <= cur && k >= first).sort().reverse().slice(0, 12);
   const sel = keys.includes(pick) ? pick : cur, isCur = sel === cur, before = prevMonth(sel);
-  const known = before + "-01" >= d.since; // only compare with a month we counted in full
   return {
-    sel, isCur, cur, keys, by,
+    sel, isCur, cur, first, keys, by,
     days: s.filter((p) => p.on && iso(p.dt).startsWith(sel)).map((p) => p.u),
     val: by.get(sel) || 0,
-    cap: (isCur ? "Last month: " : MON(before, { month: "long" }) + ": ") + (known ? nf.format(by.get(before) || 0) : "no data"),
+    cap: (isCur ? "Last month: " : MON(before, { month: "long" }) + ": ") + lastText(d, before, (k) => by.get(k) || 0),
   };
 }
 
@@ -185,7 +195,7 @@ function contactView(d, s) {
   return {
     val: sum(cur),
     days: s.filter((p) => p.on && iso(p.dt).startsWith(cur)).map((p) => by.get(iso(p.dt)) || 0),
-    cap: "This month. Last month: " + (before + "-01" >= d.since ? nf.format(sum(before)) : "no data"),
+    cap: "This month. Last month: " + lastText(d, before, sum),
   };
 }
 
@@ -198,13 +208,15 @@ function paintGrow() {
   let kind = "", icon = "minus", head, sub;
   if (prev == null) {
     head = cur ? people(cur) + " visited in the last 7 days" : "No visitors counted yet";
-    sub = "Counting started on " + fmt(new Date(d.since + "T00:00:00Z"), { day: "numeric", month: "short" }) + ". Once there are two full weeks, this box tells you whether the website is growing.";
+    sub = "Counting started on " + sinceText(d) + ". Once there are two full weeks, this box tells you whether the website is growing.";
     icon = "clock";
   } else if (!cur && !prev) {
     head = "No visitors in the last two weeks"; sub = "Share the website link to start getting visitors."; kind = "down";
-  } else if (cur > prev && cur >= prev * 1.1) {
+  } else if (cur + prev < 6) { // a handful of people is noise, not a trend
+    head = "Early days"; sub = people(cur) + " visited in the last 7 days, " + prev + " the week before. A trend shows once a few more people have visited."; icon = "clock";
+  } else if (cur - prev >= 3 && cur >= prev * 1.1) {
     head = "Your website is growing"; sub = people(cur) + " visited in the last 7 days, up from " + prev + " the week before."; kind = "up"; icon = "trending-up";
-  } else if (cur < prev && cur <= prev * 0.9) {
+  } else if (prev - cur >= 3 && cur <= prev * 0.9) {
     head = "A little quieter than last week"; sub = people(cur) + " visited in the last 7 days, " + prev + " the week before."; kind = "down"; icon = "trending-down";
   } else {
     head = "Holding steady"; sub = people(cur) + " visited in the last 7 days, " + prev + " the week before.";
@@ -217,10 +229,10 @@ function paintGrow() {
 function paintKpis() {
   const d = state.data, s = state.series;
   const mv = d && s ? monthView(d, s, state.month) : null, cv = d && s ? contactView(d, s) : null;
-  const yday = s && s[s.length - 2].on ? nf.format(s[s.length - 2].u) : "no data";
+  const yday = s && s[s.length - 2].on ? nf.format(s[s.length - 2].u) : "not counted";
   const items = [ // label, icon, tone, value, caption, days the little graph plots (no graph = null)
     ["Visitors today", "clock", "amber", d?.visitorsToday, s && "Yesterday: " + yday, null],
-    ["Visitors, last 7 days", "users", "", d?.visitorsWeek, d && "The 7 days before: " + (d.visitorsPrevWeek == null ? "no data" : nf.format(d.visitorsPrevWeek)), s && s.slice(-7).filter((p) => p.on).map((p) => p.u)],
+    ["Visitors, last 7 days", "users", "", d?.visitorsWeek, d && "The 7 days before: " + (d.visitorsPrevWeek == null ? "not counted" : nf.format(d.visitorsPrevWeek)), s && s.slice(-7).filter((p) => p.on).map((p) => p.u)],
     [null, "calendar-days", "green", mv ? mv.val : d?.visitorsThisMonth, mv && mv.cap, mv && mv.days],
     ["Calls & WhatsApp taps", "phone-call", "violet", cv && cv.val, cv && cv.cap, cv && cv.days],
   ];
@@ -229,11 +241,13 @@ function paintKpis() {
     if (!label) { // month card: the title doubles as the month picker
       const name = !mv || mv.isCur ? "Visitors this month" : "Visitors in " + MON(mv.sel, { month: "long", year: mv.sel.slice(0, 4) === mv.cur.slice(0, 4) ? undefined : "numeric" });
       head = name;
-      if (mv && mv.keys.length > 1) {
+      if (mv) { // always a dropdown, even while there is only one counted month
         head = '<button type="button" class="mpick" aria-haspopup="true" aria-expanded="' + state.menu + '">' + name + ' <i data-lucide="chevron-down" class="icon-sm"></i></button>';
-        menu = '<div class="mmenu" role="menu"' + (state.menu ? "" : " hidden") + ">" + mv.keys.map((k) =>
-          '<button type="button" role="menuitemradio" aria-checked="' + (k === mv.sel) + '" data-m="' + k + '">' + MON(k, { month: "long", year: "numeric" }) +
-          (k === mv.cur ? " · so far" : "") + "<small>" + nf.format(mv.by.get(k)) + "</small></button>").join("") + "</div>";
+        menu = '<div class="mmenu" role="menu"' + (state.menu ? "" : " hidden") + ">" + mv.keys.map((k) => {
+          const notes = [k === mv.cur ? "so far" : "", k === mv.first && partialFirst(d) ? "counted from " + sinceText(d) : ""].filter(Boolean).join(" · ");
+          return '<button type="button" role="menuitemradio" aria-checked="' + (k === mv.sel) + '" data-m="' + k + '"><span>' + MON(k, { month: "long", year: "numeric" }) +
+            (notes ? "<em>" + notes + "</em>" : "") + "</span><small>" + nf.format(mv.by.get(k)) + "</small></button>";
+        }).join("") + (mv.keys.length < 2 ? '<p class="mnote">Earlier months will show up here as the website collects data.</p>' : "") + "</div>";
       }
     }
     return '<article class="kpi ' + tone + '">' +
@@ -267,11 +281,10 @@ function paintTraffic() {
     return '<line class="grid" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>' +
       '<text x="' + (m.l - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + "</text>";
   }).join("");
-  const per = Math.max(1, Math.ceil(n / (Math.floor((W - m.l - m.r) / 44) + 1)));
-  const labelFmt = state.range === 365 ? { month: "short" } : { day: "numeric", month: "short" };
-  const skip = Math.ceil(12 / (Math.floor((W - m.l - m.r) / 44) + 1)); // 1Y: one label per month start, never repeated
-  const xl = rows.map((r, i) => (state.range === 365 ? !(r.dt.getUTCDate() === 1 && r.dt.getUTCMonth() % skip === 0) : (n - 1 - i) % per) ? "" :
-    '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="' + (i === n - 1 ? "end" : i === 0 ? "start" : "middle") + '">' + fmt(r.dt, labelFmt) + "</text>").join("");
+  // A date label is ~40px wide and the last one sits flush right, so neighbours need ~68px between them or they touch.
+  const per = Math.max(1, Math.ceil(68 / ((W - m.l - m.r) / (n - 1))));
+  const xl = rows.map((r, i) => (n - 1 - i) % per ? "" :
+    '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="' + (i === n - 1 ? "end" : i === 0 ? "start" : "middle") + '">' + fmt(r.dt, { day: "numeric", month: "short" }) + "</text>").join("");
   const dots = n <= 14 ? pts.map((p) => '<circle class="pt" cx="' + p[0] + '" cy="' + p[1] + '" r="3.5"/>').join("") : "";
 
   host.innerHTML = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + $("traffic-sub").textContent + '">' +

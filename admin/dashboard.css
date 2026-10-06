@@ -154,6 +154,10 @@ html[data-theme="light"]{--c-gold:#c28a12;--bg:#f6f4ef;--card:#fff;--line:#e8e4d
 .mmenu button:hover{background:var(--track);}
 .mmenu button[aria-checked="true"]{background:color-mix(in srgb,var(--k) 20%,transparent);}
 .mmenu small{font:inherit;color:var(--muted);}
+.mmenu button span em{display:block;margin-top:.1rem;font:500 .68rem/1.3 var(--font-body);font-style:normal;color:var(--muted);}
+.mmenu button small{align-self:center;}
+.mmenu .mnote{margin:.3rem .65rem .4rem;font-size:.72rem;line-height:1.4;color:var(--muted);}
+.kpi-foot{margin-top:auto;} /* captions line up along the bottom of every card in a row */
 
 /* "Is the website growing?" sentence */
 .grow{display:flex;align-items:center;gap:.9rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:1.1rem;background:var(--card);box-shadow:var(--shadow);--k:var(--c-gold);}
