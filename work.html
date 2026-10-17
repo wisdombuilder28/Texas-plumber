@@ -33,6 +33,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
 <link rel="stylesheet" href="styles.css?v=17" />
+<link rel="stylesheet" href="work-videos.css?v=1" />
 
 <!-- Google Analytics (GA4) -->
 <script>(function(){try{var h=location.hostname;if(h==="localhost"||h==="127.0.0.1"||/\.local$/.test(h)||(/\.vercel\.app$/.test(h)&&h!=="nd-flow-plumbing.vercel.app")||localStorage.getItem("nd_internal"))window["ga-disable-G-9LBTZMCXGV"]=true}catch(e){}})()</script>
@@ -97,6 +98,7 @@
       <p class="eyebrow">Recent Work</p>
       <h1>Projects on the board.</h1>
       <p class="intro">Completed jobs and work still in progress — every photo here was uploaded by our team. Use the tabs to filter.</p>
+      <p class="vid-jump-row"><a id="video-jump" class="vid-jump" href="#videos" hidden><i data-lucide="play" class="icon-sm"></i> Watch our videos</a></p>
     </div>
 
     <div id="work-filter" class="work-filter" role="group" aria-label="Filter projects" style="display:none">
@@ -107,6 +109,19 @@
 
     <div id="work-list" class="work-list"></div>
     <div id="work-empty" class="empty-note" hidden>No project photos yet — check back soon.</div>
+  </div>
+</section>
+
+<section id="videos" class="vid-section" aria-labelledby="videos-title" hidden>
+  <div class="container-tight">
+    <div class="vid-head">
+      <p class="eyebrow">Watch our work</p>
+      <h2 id="videos-title">Videos from the job site.</h2>
+      <p class="intro">Real jobs, before-and-afters and words from our customers. Tap a video to play it.</p>
+    </div>
+    <div id="video-filter" class="work-filter" role="group" aria-label="Filter videos" hidden></div>
+    <div id="video-list" class="vid-list"></div>
+    <div class="vid-more"><button type="button" id="video-more" class="work-filter-btn" hidden>Show more videos</button></div>
   </div>
 </section>
 
@@ -125,6 +140,26 @@
 </section>
 
 </main>
+
+<dialog id="vid-viewer" class="vid-viewer" aria-label="Video player">
+  <button type="button" id="vid-close" class="vid-close" aria-label="Close video"><i data-lucide="x" class="icon"></i></button>
+  <div class="vid-stage">
+    <div class="vid-box">
+      <span class="vid-ratio" aria-hidden="true"></span>
+      <video id="vid-player" class="vid-player" controls playsinline preload="metadata"></video>
+      <div id="vid-status" class="vid-status" hidden>
+        <span class="vid-spin" aria-hidden="true"></span>
+        <p id="vid-status-text" role="status"></p>
+        <button type="button" id="vid-retry" class="btn-accent" hidden>Try again</button>
+      </div>
+    </div>
+  </div>
+  <div class="vid-info">
+    <p class="vid-info-label" id="vid-meta"></p>
+    <h3 id="vid-title"></h3>
+    <p class="vid-full-caption" id="vid-caption" hidden></p>
+  </div>
+</dialog>
 
 <div id="lightbox" class="lightbox" hidden>
   <button type="button" id="lightbox-close" class="lightbox-close" aria-label="Close"><i data-lucide="x" class="icon"></i></button>
@@ -196,6 +231,7 @@
 
 <script src="work.js"></script>
 <script type="module" src="work-live.js"></script>
+<script type="module" src="videos-live.js"></script>
 <script src="/motion.js?v=12"></script>
 <script src="/pwa.js"></script>
 <script src="/nav.js?v=17"></script>

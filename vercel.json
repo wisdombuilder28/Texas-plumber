@@ -2,6 +2,9 @@
   "functions": {
     "api/analytics.js": {
       "maxDuration": 15
+    },
+    "api/videos.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

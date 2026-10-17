@@ -56,6 +56,41 @@ service cloud.firestore {
       }
     }
 
+    // Videos shown on the Recent Work page. Anyone can read the list; only an admin can add, change or
+    // remove entries. The video FILES are not stored here (or in Firebase Storage): they sit in a private
+    // storage bucket (see api/videos.js). Each entry holds the file's name (`key`) plus a small cover
+    // picture, as base64 text, so the size check keeps every write far below the 1 MiB document limit.
+    //
+    // KEEP IN SYNC with admin/js/videos-admin.js and videos-live.js:
+    //   title 1-80 characters | caption up to 300 | categories = CATEGORIES (showcase, before-after, testimonial)
+    //   cover picture (poster) up to 140,000 characters = MAX_POSTER_CHARS
+    function validVideo(d) {
+      return d.title is string
+        && d.title.size() > 0
+        && d.title.size() <= 80
+        && d.caption is string
+        && d.caption.size() <= 300
+        && d.category in ['showcase', 'before-after', 'testimonial']
+        && d.key is string
+        && d.key.matches('videos/[A-Za-z0-9_-]{8,64}[.](mp4|webm)')
+        && d.mime in ['video/mp4', 'video/webm']
+        && d.bytes is number
+        && d.bytes > 0
+        && d.bytes <= 450000000
+        && d.durationSec is number
+        && d.durationSec >= 0
+        && d.durationSec <= 900
+        && d.poster is string
+        && d.poster.size() <= 140000
+        && d.order is number;
+    }
+
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validVideo(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     // ---- Reserved for future phases: schema is live now, UI/dashboard pages come later ----
 
     match /services/{serviceId} {

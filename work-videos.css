@@ -1,0 +1,143 @@
+/* work-videos.css
+   The video section on the Recent Work page. Loads after styles.css and reuses its colours,
+   card look, filter pills and phone text scale (--ts). */
+
+/* The site's own display rules (flex, grid) would otherwise beat the "hidden" attribute. */
+.vid-section[hidden],
+.vid-section [hidden],
+.vid-jump[hidden],
+.vid-viewer [hidden]{display:none !important;}
+
+/* ---------- link near the top of the page ---------- */
+.vid-jump-row{margin-top:1.1rem;}
+.vid-jump{
+  display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .95rem;border-radius:999px;
+  border:1px solid var(--border);background:#fff;color:var(--brand-black);
+  font-size:calc(.85rem * var(--ts));font-weight:700;transition:border-color .15s ease;
+}
+.vid-jump:hover{border-color:var(--brand-gold);}
+.vid-jump .icon-sm{color:var(--brand-gold);fill:currentColor;}
+
+/* ---------- the section ---------- */
+.vid-section{
+  scroll-margin-top:5.5rem;
+  padding-block:clamp(2.5rem,5vw,4rem) clamp(3.5rem,7vw,6rem);
+  border-top:1px solid var(--border);
+}
+.vid-head{max-width:36rem;}
+.vid-head h2{margin-top:.75rem;font-size:calc(clamp(1.5rem,3vw,2rem) * var(--ts));font-weight:700;}
+.vid-head .intro{margin-top:.85rem;color:var(--muted-foreground);}
+
+.vid-list{display:grid;gap:1rem;margin-top:1.5rem;}
+@media(min-width:560px){.vid-list{grid-template-columns:repeat(2,1fr);gap:1.15rem;}}
+@media(min-width:1100px){.vid-list{grid-template-columns:repeat(3,1fr);gap:1.25rem;}}
+
+.vid-item{
+  display:flex;flex-direction:column;border-radius:1rem;overflow:hidden;
+  background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow-card);
+  transition:transform .2s ease, box-shadow .2s ease;
+  animation:vidIn .45s ease backwards;
+}
+.vid-item:hover{transform:translateY(-3px);box-shadow:0 4px 8px oklch(0.1 0.006 260/0.08),0 20px 40px -16px oklch(0.1 0.006 260/0.25);}
+@keyframes vidIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
+
+.vid-media{
+  position:relative;display:block;width:100%;padding:0;border:0;cursor:pointer;
+  aspect-ratio:4 / 3;overflow:hidden;background:var(--brand-black-deep);color:#fff;
+}
+.vid-media img{width:100%;height:100%;object-fit:cover;}
+/* A phone-shot (tall) video shows whole, with dark bars at the sides, rather than a cropped slice. */
+.vid-item[data-shape="portrait"] .vid-media img{object-fit:contain;}
+.vid-media::after{content:"";position:absolute;inset:0;background:oklch(0.1 0.006 260/0);transition:background .2s ease;}
+.vid-media:hover::after{background:oklch(0.1 0.006 260/0.15);}
+.vid-media:focus-visible{outline:3px solid var(--brand-gold);outline-offset:-3px;}
+.vid-play{
+  position:absolute;left:50%;top:50%;z-index:1;width:3.5rem;height:3.5rem;margin:-1.75rem 0 0 -1.75rem;
+  display:grid;place-items:center;border-radius:50%;
+  background:var(--brand-gold);color:var(--brand-black);
+  box-shadow:0 8px 22px -6px rgba(0,0,0,.55);transition:transform .18s ease;
+}
+.vid-media:hover .vid-play{transform:scale(1.08);}
+.vid-play svg{width:1.45rem;height:1.45rem;margin-left:.12rem;fill:currentColor;}
+.vid-dur{
+  position:absolute;right:.6rem;bottom:.6rem;z-index:1;padding:.1rem .45rem;border-radius:.35rem;
+  background:rgba(0,0,0,.72);color:#fff;font-size:calc(.75rem * var(--ts));font-weight:700;
+}
+
+.vid-body{padding:.9rem 1rem 1.05rem;display:flex;flex-direction:column;gap:.35rem;flex:1;min-width:0;}
+.vid-label{
+  display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;
+  font-size:calc(.72rem * var(--ts));font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);
+}
+.vid-label .dot{width:6px;height:6px;border-radius:50%;background:var(--brand-gold);flex-shrink:0;}
+.vid-title{font-size:calc(1rem * var(--ts));font-weight:700;line-height:1.3;overflow-wrap:anywhere;}
+.vid-caption{
+  font-size:calc(.88rem * var(--ts));line-height:1.5;color:var(--foreground);overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+}
+
+.vid-more{display:flex;justify-content:center;margin-top:1.5rem;}
+.vid-more .work-filter-btn{min-height:2.75rem;padding-inline:1.25rem;}
+.vid-more .work-filter-btn:disabled{opacity:.6;cursor:default;}
+
+/* ---------- the player pop-up ---------- */
+.vid-viewer{
+  --ar:1.7778;          /* width / height of the video, set from the page code */
+  --vid-chrome:14rem;   /* room kept above and below the picture on screen */
+  position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;
+  padding:3.75rem 1rem 1.25rem;border:0;overflow:auto;
+  background:oklch(0.05 0.006 260 / .96);color:#fff;
+}
+.vid-viewer::backdrop{background:rgba(0,0,0,.6);}
+/* Locks the page behind the player. On <html>, never <body>: a body lock would un-stick the site header. */
+html.vid-open{overflow:hidden;}
+.vid-viewer[open]{display:flex;flex-direction:column;align-items:center;gap:1rem;}
+.vid-close{
+  position:fixed;top:.9rem;right:.9rem;z-index:2;width:2.75rem;height:2.75rem;border-radius:50%;
+  display:grid;place-items:center;background:oklch(1 0 0/0.14);color:#fff;
+}
+.vid-close:hover{background:oklch(1 0 0/0.24);}
+.vid-close:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
+
+.vid-stage{width:100%;max-width:60rem;margin-top:auto;display:flex;justify-content:center;}
+/* The box is as big as fits on screen while keeping the video's own shape, so a tall phone video is
+   not squeezed into a wide frame. (The spacer below holds the height; it works without CSS aspect-ratio.) */
+.vid-box{
+  position:relative;
+  width:min(100%, calc((100vh - var(--vid-chrome)) * var(--ar)));
+  width:min(100%, calc((100dvh - var(--vid-chrome)) * var(--ar)));
+}
+.vid-ratio{display:block;width:100%;height:0;padding-bottom:calc(100% / var(--ar));}
+.vid-player{
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  border-radius:.6rem;background:#000;object-fit:contain;
+}
+.vid-status{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;
+  padding:1rem;border-radius:.6rem;text-align:center;
+  background:oklch(0.05 0.006 260 / .55);color:#fff;font-size:calc(.9rem * var(--ts));line-height:1.45;
+  pointer-events:none; /* while loading, taps still reach the video controls underneath */
+}
+.vid-status[data-kind="error"]{background:oklch(0.05 0.006 260 / .85);pointer-events:auto;}
+.vid-status .btn-accent{font-size:calc(.9rem * var(--ts));padding:.65rem 1.25rem;}
+.vid-spin{
+  width:2rem;height:2rem;border-radius:50%;
+  border:3px solid rgba(255,255,255,.25);border-top-color:var(--brand-gold);
+  animation:vidSpin .8s linear infinite;
+}
+.vid-status[data-kind="error"] .vid-spin{display:none;}
+@keyframes vidSpin{to{transform:rotate(360deg);}}
+
+.vid-info{width:100%;max-width:60rem;margin-bottom:auto;text-align:left;}
+.vid-info-label{
+  font-size:calc(.68rem * var(--ts));font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-gold);
+}
+.vid-info h3{margin-top:.3rem;color:#fff;font-size:calc(1.05rem * var(--ts));font-weight:700;line-height:1.3;overflow-wrap:anywhere;}
+.vid-full-caption{margin-top:.45rem;font-size:calc(.9rem * var(--ts));line-height:1.55;color:oklch(0.92 0.006 260);overflow-wrap:anywhere;}
+
+@media (prefers-reduced-motion:reduce){
+  .vid-item{animation:none;transition:none;}
+  .vid-item:hover{transform:none;}
+  .vid-spin{animation:none;}
+  .vid-play,.vid-media::after{transition:none;}
+}
