@@ -22,12 +22,13 @@
 //   STORAGE_REGION   (optional)    only for services whose region can't be read from the endpoint
 //   STORAGE_PROVIDER (optional)    label saved with each video. Default "b2".
 //   STORAGE_CORS_ORIGINS (optional) extra https sites allowed to upload (comma separated), e.g.
-//                                  a custom domain. The one-time "Storage setup" adds the live
-//                                  site and the page you run it from automatically.
-//   B2_SETUP_MASTER_KEY_ID          TEMPORARY: master key ID used only by action=setup. Never
-//                                  send this value from the browser. Remove after successful setup.
-//   B2_SETUP_MASTER_KEY             TEMPORARY: matching master key secret. Server-side only;
-//                                  remove after successful setup and rotate the key in Backblaze.
+//                                  a custom domain. The live site, https://nd-flow-plumbing.vercel.app,
+//                                  is always allowed. Nothing is ever taken from a request.
+//   B2_SETUP_MASTER_KEY_ID          TEMPORARY, for the one-time setup only: the Backblaze master key ID.
+//   B2_SETUP_MASTER_KEY             TEMPORARY, for the one-time setup only: the matching master key.
+//                                  Both are read ONLY from here (never from a request), are never
+//                                  logged or sent back, and must be deleted from Vercel (and the master
+//                                  key regenerated in Backblaze) as soon as the setup has worked.
 
 "use strict";
 
@@ -49,6 +50,11 @@ const VIDEO_KEY = /^videos\/[A-Za-z0-9_-]{8,64}\.(mp4|webm)$/;
 const TEST_KEY = /^test\/[A-Za-z0-9_-]{8,64}\.bin$/;
 const ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MIME_EXT = { "video/mp4": "mp4", "video/webm": "webm" };
+
+// The one website address that may send videos straight to the storage (the browser's "CORS" permission).
+// More can be added with STORAGE_CORS_ORIGINS; an address is never taken from a request.
+const PRODUCTION_ORIGIN = "https://nd-flow-plumbing.vercel.app";
+const CORS_RULE_NAME = "nd-flow-browser-upload"; // the only storage rule this code ever creates or changes
 
 const UPLOAD_LINK_SECONDS = 12 * 3600; // upload links stay valid this long
 const PLAY_LINK_SECONDS = 6 * 3600; //    play links stay valid this long
