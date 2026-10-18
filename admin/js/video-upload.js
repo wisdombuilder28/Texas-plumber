@@ -154,6 +154,36 @@ async function whenOnline(signal) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Bad signal, or is the storage refusing this browser? (its one-time "upload permission" / CORS rule)
+// ---------------------------------------------------------------------------------------------
+const BLOCKED_TEXT = "The storage isn't letting this phone send videos to it yet.";
+
+// A "no-cors" request needs no permission, so it only fails when the phone truly can't get to the storage's
+// address (no signal, no DNS). If it works while the real upload keeps failing before a single byte leaves,
+// the browser is being stopped by the storage's own rule about who may send it files, not by the signal.
+async function storageReachable(url, signal) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return false;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  const stop = () => ctrl.abort();
+  if (signal) signal.addEventListener("abort", stop, { once: true });
+  try {
+    await fetch(`${origin}/`, { method: "GET", mode: "no-cors", cache: "no-store", credentials: "omit", signal: ctrl.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", stop);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // All parts, a few at a time
 // ---------------------------------------------------------------------------------------------
 async function sendParts(s, blob, indexes, { signal, onProgress, onRetry, retryDelays = PART_RETRY_DELAYS }) {
@@ -192,9 +222,18 @@ async function sendParts(s, blob, indexes, { signal, onProgress, onRetry, retryD
         report();
         return;
       } catch (error) {
+        const sentBefore = inFlight.get(i) || 0;
         inFlight.delete(i);
         report();
         if (error.code === "canceled" || killer.signal.aborted) throw new UploadError("canceled", "Cancelled.");
+        // Failing twice either before a single byte leaves (the browser's permission check is refused) or only
+        // after the whole part went out (the answer is refused), while the storage can still be reached, is the
+        // storage refusing this browser, not a bad signal. A signal that drops cuts a part off half way instead.
+        // Say so at once instead of retrying for half a minute.
+        const nothingOrEverythingSent = sentBefore === 0 || sentBefore >= piece.size;
+        if (error.code === "network" && attempt >= 1 && nothingOrEverythingSent && s.done.size === 0 && (await storageReachable(s.urls[i], killer.signal))) {
+          throw new UploadError("blocked", BLOCKED_TEXT);
+        }
         if (!error.retryable || attempt >= retryDelays.length) throw error;
         if (onRetry) onRetry({ part: i + 1, attempt: attempt + 1, error });
         await whenOnline(killer.signal);
@@ -347,8 +386,10 @@ export async function runStorageTest(getToken, onStep) {
     result = await uploadBlob({ blob: new Blob([bytes]), purpose: "test", getToken, retryDelays: [700] });
   } catch (error) {
     if (error.session) await abortUpload(getToken, error.session);
-    if (error.code === "network" || error.code === "stalled") {
+    if (error.code === "blocked") {
       record("upload", false, "This phone's browser was blocked from sending to the storage. That means the one-time “upload permission” setup hasn't been done yet. Use “One-time setup” below.");
+    } else if (error.code === "network" || error.code === "stalled") {
+      record("upload", false, "The test file didn't get through. Check your signal and run the test again. If it keeps failing with a good signal, use “One-time setup” below.");
     } else if (error.code === "link_rejected") {
       record("upload", false, "The storage refused the upload link. Check STORAGE_KEY_ID and STORAGE_APP_KEY in Vercel, then redeploy.");
     } else {

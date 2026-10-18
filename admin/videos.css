@@ -151,6 +151,9 @@
 .v-setup-block .form-message{margin:.7rem 0 0;color:var(--brand-black);background:#fff;border:1px solid var(--border);}
 .v-setup-block .form-message.error{background:var(--danger-soft);color:var(--danger);border-color:transparent;}
 .v-setup-block .form-message.success{background:var(--success-soft);color:var(--success);border-color:transparent;}
+.v-howto{display:flex;flex-direction:column;gap:.5rem;margin:0 0 .9rem;padding-left:1.2rem;list-style:decimal;font-size:.84rem;line-height:1.5;color:var(--muted-foreground);}
+.v-howto li{padding-left:.15rem;}
+.v-howto strong{color:var(--brand-black);}
 .v-steps{display:flex;flex-direction:column;gap:.45rem;margin-top:.8rem;}
 .v-steps li{
   display:flex;align-items:flex-start;gap:.5rem;padding:.55rem .7rem;border-radius:.55rem;

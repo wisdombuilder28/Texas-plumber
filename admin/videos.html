@@ -150,7 +150,12 @@
             </div>
             <div class="v-setup-block">
               <h3>2. One-time setup <small>(only if the test says uploads are blocked)</small></h3>
-              <p>Backblaze's website can't switch on uploads from a browser, but its account key can. Paste the account's <strong>master</strong> key below once. It is used for this single step and is never saved or shown again. Afterwards, create a <strong>new</strong> master key in Backblaze so the one you pasted stops working.</p>
+              <p>Backblaze has to be told once that this website may send videos to it. Its website can't do that, but its <strong>master key</strong> can. So:</p>
+              <ol class="v-howto">
+                <li>Log in at <strong>backblaze.com</strong>. Open the menu → <strong>Application Keys</strong>. At the top tap <strong>Generate New Master Application Key</strong>, then <strong>Yes! Generate Master Key</strong>. Backblaze shows a <strong>Key ID</strong> and an <strong>Application Key</strong>. Copy both (the key is shown only once).</li>
+                <li>Paste them in the two boxes below and tap <strong>Turn on uploads</strong>. They are used once, then wiped. Nothing is saved.</li>
+                <li>Go back to Backblaze and tap <strong>Generate New Master Application Key</strong> again. That kills the one you just pasted.</li>
+              </ol>
               <label class="field"><span>Master key ID</span><input id="master-id" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text" /></label>
               <label class="field"><span>Master key</span><input id="master-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
               <button type="button" id="setup-btn" class="btn-accent">Turn on uploads</button>

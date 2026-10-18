@@ -139,6 +139,7 @@ function icon(name, size = 18) {
 
 function formatBytes(n) {
   if (!Number.isFinite(n) || n < 0) return "";
+  if (n === 0) return "0 KB";
   if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)} GB`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e8 ? 0 : 1)} MB`;
   return `${Math.max(1, Math.round(n / 1e3))} KB`;
@@ -300,6 +301,27 @@ function openSetup() {
   setupBox.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// Has this phone already shown it can send files to the storage? Only used to show a first-time hint.
+const WORKS_FLAG = "ndflow-video-storage-works";
+function storageWorksHere() {
+  try {
+    return localStorage.getItem(WORKS_FLAG) === "1";
+  } catch {
+    return false;
+  }
+}
+function rememberStorageWorks() {
+  try {
+    localStorage.setItem(WORKS_FLAG, "1");
+  } catch {
+    /* private window: the hint just shows again */
+  }
+}
+function runTestNow() {
+  openSetup();
+  testBtn.click();
+}
+
 function renderStorage() {
   storageBox.className = "v-storage";
   const buttons = [];
@@ -352,6 +374,12 @@ function renderStorage() {
     parts.push(el("div", { class: "v-meter-track", role: "img", "aria-label": `${Math.round(ratio * 100)} percent of the video storage is used` }, fill));
     if (ratio >= 1) parts.push(el("p", { class: "v-meter-note", text: "The storage is full. Delete some old videos before adding new ones." }));
     else if (ratio >= 0.8) parts.push(el("p", { class: "v-meter-note", text: "Getting full. Delete old videos you no longer need to make room." }));
+  }
+  if (!storageWorksHere()) {
+    parts.push(
+      el("p", { class: "v-meter-note", text: "First video on this phone? Run the quick test first. It takes a few seconds and shows if anything is still missing." }),
+      el("div", { class: "v-storage-actions" }, el("button", { type: "button", class: "btn-ghost-dark", text: "Run the test", onclick: runTestNow }))
+    );
   }
   storageBox.replaceChildren(...parts);
 }
@@ -710,6 +738,8 @@ function uploadMessage(e) {
   switch (e.code) {
     case "network":
       return "Lost the connection. What was already sent is kept. Tap Try again when your signal is back.";
+    case "blocked":
+      return "The storage isn't letting this phone send videos to it yet. That's the one-time “upload permission” step. Tap “Open the setup” and follow step 2, then come back here and tap Try again: your video is kept, nothing to redo. (If you already did that step, check your signal and tap Try again.)";
     case "stalled":
       return "The connection stopped moving. What was already sent is kept. Tap Try again.";
     case "link_rejected":
@@ -1016,6 +1046,7 @@ async function doUpload() {
       });
       j.uploaded = { key: result.key, bytes: Number.isInteger(result.bytes) ? result.bytes : j.shrunk.bytes };
       j.session = null;
+      rememberStorageWorks();
     }
     if (job !== j) return;
     j.stage = "saving";
@@ -1052,6 +1083,7 @@ function handleUploadError(j, error) {
     abortUpload(getToken, s);
   }
   j.error = { text: wasSaving ? `The video is uploaded, but saving it to the list failed: ${friendlyError(error)}` : explain(error) };
+  if (!wasSaving && error instanceof UploadError && error.code === "blocked") j.error.action = { label: "Open the setup", run: openSetup };
   renderJob();
 }
 
@@ -1234,13 +1266,21 @@ function onVideos(snapshot) {
   layoutList();
 }
 
+// Why the list couldn't be read. "permission-denied" almost always means the new Firestore rules haven't been published yet.
+function listErrorText(error) {
+  if (error && error.code === "permission-denied") {
+    return "Firebase isn't letting this page read the video list yet. In Firebase, open Firestore Database → Rules, paste in the new firestore.rules file and tap Publish. Then refresh this page.";
+  }
+  return "Couldn't load the videos. Check your connection, then refresh this page.";
+}
+
 function startLibrary() {
   if (unsubscribe) unsubscribe();
   const q = query(collection(db, "videos"), orderBy("order", "desc"), limit(listLimit));
   unsubscribe = onSnapshot(q, onVideos, (error) => {
     console.error("Video list failed:", error);
     loaded = true;
-    if (!cards.size) loadError = "Couldn't load the videos. Check your connection, then refresh this page.";
+    if (!cards.size) loadError = listErrorText(error);
     else toast("Lost connection to the video list. Refresh the page to reconnect.", "error");
     layoutList();
   });
@@ -1404,6 +1444,7 @@ testBtn.addEventListener("click", async () => {
       testSteps.append(stepRow(step));
     });
     if (first) testSteps.replaceChildren();
+    if (steps.some((s) => s.id === "upload" && s.ok)) rememberStorageWorks();
     if (steps.length && steps.every((s) => s.ok) && steps[steps.length - 1].id === "cleanup") toast("Video storage works.");
   } catch (error) {
     console.error("Storage test crashed:", error);
@@ -1438,6 +1479,7 @@ setupBtn.addEventListener("click", async () => {
     if (r.bucketType && r.bucketType !== "allPrivate") lines.push("Warning: this bucket is not private. Make it private in Backblaze.");
     if (r.endpointMatches === false) lines.push(`Warning: STORAGE_ENDPOINT in Vercel doesn't match this bucket's address (${r.s3Host}). Fix it and redeploy.`);
     lines.push("Last step: in Backblaze, generate a new master key, so the one you just pasted stops working. Then tap “Test storage” above.");
+    if (r.corsSaved && job && job.retry) lines.push("Your video is still waiting: scroll up and tap “Try again”.");
     showSetup(lines.join(" "), r.corsSaved ? "success" : "error");
   } catch (error) {
     masterKey.value = "";
