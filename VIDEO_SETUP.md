@@ -87,12 +87,15 @@ Firebase console → Firestore Database → **Rules** → replace everything wit
 2. Scroll down to **Storage setup & test** (tap it to open it) → **Test storage**.
 3. All green ticks = ready.
 
-**If the test says uploads are blocked** (the browser isn't allowed to send files to Backblaze yet), do the one-time fix in the box underneath:
+**If the test says uploads are blocked** (the browser isn't allowed to send files to Backblaze yet), do the one-time fix in **Storage setup & test**. Never paste a master key into the website.
 
-1. Backblaze → **Application Keys** → **Master Application Key** → **Generate New Master Application Key** → **Yes! Generate Master Key**. Copy the key ID and the key.
-2. Paste them into the two boxes on the Videos page → **Turn on uploads**. (They're used once, never saved, and the boxes are wiped afterwards.)
-3. Back in Backblaze, generate a **new** master key again. That makes the one you pasted useless.
-4. Press **Test storage** again.
+1. Backblaze → **Application Keys** → **Generate New Master Application Key** → **Yes! Generate Master Key**. Copy the key ID and Application Key and keep them private.
+2. Vercel → project **Settings → Environment Variables**. Add `B2_SETUP_MASTER_KEY_ID` and `B2_SETUP_MASTER_KEY` as sensitive/private **Production** variables, then redeploy.
+3. Open **Admin → Videos → Storage setup & test** and press **Configure upload permissions**. The server reads these temporary values; the browser does not receive them.
+4. When setup succeeds, delete both `B2_SETUP_MASTER_KEY_ID` and `B2_SETUP_MASTER_KEY` from Vercel and redeploy Production. Then generate a new master key in Backblaze to invalidate the temporary one.
+5. Press **Test storage** again. If it passes, upload one small test video and verify playback before adding client videos.
+
+The setup updates only the site's named CORS rule and preserves other existing CORS and lifecycle rules. It does not make the bucket public.
 
 **If the test says something else**, it tells you what to check. The usual ones:
 - *"isn't set up yet"* → one of the four Vercel settings is missing, or you didn't redeploy.

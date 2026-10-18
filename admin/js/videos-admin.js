@@ -1425,8 +1425,6 @@ const testBtn = $("test-btn");
 const testSteps = $("test-steps");
 const setupBtn = $("setup-btn");
 const setupResult = $("setup-result");
-const masterId = $("master-id");
-const masterKey = $("master-key");
 
 function stepRow(step) {
   return el("li", { class: step.ok ? "is-ok" : "is-bad" }, icon(step.ok ? "check" : "alert", 16), el("span", { text: step.text }));
@@ -1461,28 +1459,19 @@ function showSetup(text, kind) {
   setupResult.textContent = text;
 }
 setupBtn.addEventListener("click", async () => {
-  const keyId = masterId.value.trim();
-  const key = masterKey.value.trim();
-  if (!keyId || !key) {
-    showSetup("Paste both the master key ID and the master key.", "error");
-    return;
-  }
   setupBtn.disabled = true;
-  showSetup("Working…", "");
+  showSetup("Configuring the bucket's browser-upload permission using server-side credentials…", "");
   try {
-    const r = await apiPost(getToken, { action: "setup", masterKeyId: keyId, masterKey: key });
-    masterKey.value = ""; // used once, never kept
-    masterId.value = "";
+    // Never include high-privilege Backblaze credentials in a browser request.
+    const r = await apiPost(getToken, { action: "setup" });
     const lines = [];
-    lines.push(r.corsSaved ? "Uploads from this website are now allowed." : "Backblaze answered, but the upload permission didn't save. Try again.");
-    if (r.lifecycleSaved) lines.push("Deleted videos will now free their space.");
+    lines.push(r.corsSaved ? "Uploads from this website are now allowed." : "Backblaze answered, but the upload permission didn't save. Check the bucket and try again.");
     if (r.bucketType && r.bucketType !== "allPrivate") lines.push("Warning: this bucket is not private. Make it private in Backblaze.");
     if (r.endpointMatches === false) lines.push(`Warning: STORAGE_ENDPOINT in Vercel doesn't match this bucket's address (${r.s3Host}). Fix it and redeploy.`);
-    lines.push("Last step: in Backblaze, generate a new master key, so the one you just pasted stops working. Then tap “Test storage” above.");
+    if (r.corsSaved) lines.push("SECURITY CLEANUP: remove B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY from Vercel, redeploy Production, then generate a new master key in Backblaze to invalidate the temporary key. Finally run “Test storage” above.");
     if (r.corsSaved && job && job.retry) lines.push("Your video is still waiting: scroll up and tap “Try again”.");
     showSetup(lines.join(" "), r.corsSaved ? "success" : "error");
   } catch (error) {
-    masterKey.value = "";
     showSetup(error.message || "That didn't work. Try again.", "error");
   } finally {
     setupBtn.disabled = false;

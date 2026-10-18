@@ -24,6 +24,10 @@
 //   STORAGE_CORS_ORIGINS (optional) extra https sites allowed to upload (comma separated), e.g.
 //                                  a custom domain. The one-time "Storage setup" adds the live
 //                                  site and the page you run it from automatically.
+//   B2_SETUP_MASTER_KEY_ID          TEMPORARY: master key ID used only by action=setup. Never
+//                                  send this value from the browser. Remove after successful setup.
+//   B2_SETUP_MASTER_KEY             TEMPORARY: matching master key secret. Server-side only;
+//                                  remove after successful setup and rotate the key in Backblaze.
 
 "use strict";
 
@@ -661,9 +665,9 @@ async function verifyAdmin(ctx, req) {
 }
 
 // ---------------------------------------------------------------------------
-// One-time setup with the Backblaze master key (browser uploads need a CORS rule, and Backblaze's
-// website can't create that kind; only its API can). The key is used for these few calls and then
-// forgotten: it is never saved, logged or sent back.
+// One-time setup with a temporary Backblaze master key, supplied only by server-side environment
+// variables. Never accept master credentials from the browser or include them in logs/responses.
+// Remove the temporary environment variables and rotate the master key immediately after setup.
 // ---------------------------------------------------------------------------
 const B2_API = "https://api.backblazeb2.com/b2api/v4";
 
@@ -702,7 +706,7 @@ async function setupBucket(ctx, cfg, { keyId, key }, origins) {
     throw new ApiError(
       400,
       "b2_bad_key",
-      "Backblaze didn't accept that key. Use the master application key (Application Keys page → Generate New Master Application Key): both the key ID and the key."
+      "Backblaze didn't accept the temporary setup key. Check B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY in Vercel, then redeploy."
     );
   }
   const apiUrl = auth.apiInfo?.storageApi?.apiUrl;
@@ -716,7 +720,10 @@ async function setupBucket(ctx, cfg, { keyId, key }, origins) {
     throw new ApiError(404, "b2_no_bucket", `That Backblaze account has no bucket called "${cfg.bucket}". Check STORAGE_BUCKET in Vercel.`);
   }
 
+  // Update only our own CORS rule. Preserve any other rules created by the bucket owner.
+  const existingCorsRules = Array.isArray(bucket.corsRules) ? bucket.corsRules : [];
   const corsRules = [
+    ...existingCorsRules.filter((rule) => rule && rule.corsRuleName !== "nd-flow-browser-upload"),
     {
       corsRuleName: "nd-flow-browser-upload",
       allowedOrigins: origins,
@@ -726,12 +733,12 @@ async function setupBucket(ctx, cfg, { keyId, key }, origins) {
       maxAgeSeconds: 3600,
     },
   ];
-  // "Keep only the last version of the file": when a video is deleted its bytes go away for good.
-  const lifecycleRules = [{ fileNamePrefix: "", daysFromUploadingToHiding: null, daysFromHidingToDeleting: 1 }];
 
+  // Do not overwrite lifecycle rules. Video deletes explicitly remove every version, and
+  // bucket lifecycle configuration may contain unrelated rules managed by the owner.
   await b2Json(ctx, `${apiUrl}/b2api/v4/b2_update_bucket`, {
     token,
-    body: { accountId, bucketId: bucket.bucketId, ifRevisionIs: bucket.revision, corsRules, lifecycleRules },
+    body: { accountId, bucketId: bucket.bucketId, ifRevisionIs: bucket.revision, corsRules },
   });
 
   // Read it back so the page can say what was really saved.
@@ -748,7 +755,6 @@ async function setupBucket(ctx, cfg, { keyId, key }, origins) {
   return {
     corsSaved: !!rule && (rule.allowedOperations || []).includes("s3_put"),
     origins: rule ? rule.allowedOrigins : [],
-    lifecycleSaved: (saved.lifecycleRules || []).some((r) => r.daysFromHidingToDeleting === 1),
     bucketType: saved.bucketType || bucket.bucketType,
     s3Host,
     endpointMatches: s3Host ? s3Host === cfg.host : null,
@@ -931,11 +937,17 @@ async function actionCleanup(ctx, cfg) {
   return { ok: true, aborted };
 }
 
-async function actionSetup(ctx, cfg, req, body) {
-  const keyId = String(body.masterKeyId || "").trim();
-  const key = String(body.masterKey || "").trim();
+async function actionSetup(ctx, cfg, req) {
+  // High-privilege credentials must never arrive in a browser request. They may only be
+  // configured temporarily as server-side Vercel environment variables for this one-time task.
+  const keyId = String(ctx.env.B2_SETUP_MASTER_KEY_ID || "").trim();
+  const key = String(ctx.env.B2_SETUP_MASTER_KEY || "").trim();
   if (!/^[A-Za-z0-9]{8,64}$/.test(keyId) || !/^[A-Za-z0-9+/_=-]{16,128}$/.test(key)) {
-    throw new ApiError(400, "bad_key", "Paste the master key ID and the master key exactly as Backblaze shows them.");
+    throw new ApiError(
+      503,
+      "setup_credentials_missing",
+      "One-time setup credentials aren't configured on the server. Add B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY as sensitive server-side Vercel environment variables, redeploy, then try again."
+    );
   }
   const result = await setupBucket(ctx, cfg, { keyId, key }, cleanOrigins(req, ctx.env));
   return { ok: true, ...result };
@@ -986,7 +998,7 @@ async function handle(ctx, req) {
     case "cleanup":
       return jsonResponse(200, await actionCleanup(ctx, cfg));
     case "setup":
-      return jsonResponse(200, await actionSetup(ctx, cfg, req, body));
+      return jsonResponse(200, await actionSetup(ctx, cfg, req));
     default:
       throw new ApiError(400, "bad_action", "Unknown action.");
   }

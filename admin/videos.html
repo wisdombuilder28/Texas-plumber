@@ -150,15 +150,14 @@
             </div>
             <div class="v-setup-block">
               <h3>2. One-time setup <small>(only if the test says uploads are blocked)</small></h3>
-              <p>Backblaze has to be told once that this website may send videos to it. Its website can't do that, but its <strong>master key</strong> can. So:</p>
+              <p>Backblaze needs a CORS rule to allow this website to upload videos directly. For safety, <strong>never paste a Backblaze master key into this page</strong>. The setup endpoint reads temporary credentials from server-side Vercel environment variables instead.</p>
               <ol class="v-howto">
-                <li>Log in at <strong>backblaze.com</strong>. Open the menu → <strong>Application Keys</strong>. At the top tap <strong>Generate New Master Application Key</strong>, then <strong>Yes! Generate Master Key</strong>. Backblaze shows a <strong>Key ID</strong> and an <strong>Application Key</strong>. Copy both (the key is shown only once).</li>
-                <li>Paste them in the two boxes below and tap <strong>Turn on uploads</strong>. They are used once, then wiped. Nothing is saved.</li>
-                <li>Go back to Backblaze and tap <strong>Generate New Master Application Key</strong> again. That kills the one you just pasted.</li>
+                <li>In Backblaze → <strong>Application Keys</strong>, generate a temporary <strong>Master Application Key</strong>. Copy its Key ID and Application Key and keep them private.</li>
+                <li>In Vercel → Project → <strong>Settings → Environment Variables</strong>, add <code>B2_SETUP_MASTER_KEY_ID</code> and <code>B2_SETUP_MASTER_KEY</code>. Mark both sensitive/private, select <strong>Production</strong>, save, and redeploy.</li>
+                <li>Return here and tap <strong>Configure upload permissions</strong>. The server uses the temporary credentials; this page never receives them.</li>
+                <li>After success, remove both <code>B2_SETUP_…</code> variables from Vercel and redeploy. Then generate a new master key in Backblaze to invalidate the temporary one. Finally run <strong>Test storage</strong> again.</li>
               </ol>
-              <label class="field"><span>Master key ID</span><input id="master-id" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text" /></label>
-              <label class="field"><span>Master key</span><input id="master-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
-              <button type="button" id="setup-btn" class="btn-accent">Turn on uploads</button>
+              <button type="button" id="setup-btn" class="btn-accent">Configure upload permissions</button>
               <p id="setup-result" class="form-message" role="status" hidden></p>
             </div>
           </div>
