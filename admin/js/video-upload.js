@@ -2,6 +2,11 @@
 // Sends a video from the phone straight to the storage bucket, in parts, with progress, a few parts at a time,
 // automatic retries and "pick up where it stopped". The server (/api/videos) only hands out the one-time links
 // and checks that the whole video arrived; the video itself never passes through it.
+//
+// When sending fails, the phone's browser only ever says "network error" (it says the same whether the signal
+// dropped, the file couldn't be read, or the storage's permission for this website is missing). So after a part
+// has failed twice this file asks the server, which can look at the storage, and tells the admin which of those
+// it really is instead of guessing.
 
 const API = "/api/videos";
 const PART_RETRY_DELAYS = [800, 1600, 3200, 6400, 8000]; // 6 tries per part
@@ -40,6 +45,27 @@ function randomId() {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// An abort signal that also fires after `ms` (and when `parent` fires). Call done() when finished with it.
+function timedSignal(parent, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const onAbort = () => ctrl.abort();
+  if (parent) {
+    if (parent.aborted) ctrl.abort();
+    else parent.addEventListener("abort", onAbort, { once: true });
+  }
+  return {
+    signal: ctrl.signal,
+    done() {
+      clearTimeout(timer);
+      if (parent) parent.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+const kb = (n) => `${Math.round((Number(n) || 0) / 1024)} KB`;
+const thisAddress = () => (typeof location !== "undefined" ? location.origin : "");
+
 // ---------------------------------------------------------------------------------------------
 // Talking to /api/videos
 // ---------------------------------------------------------------------------------------------
@@ -66,7 +92,8 @@ async function request(getToken, method, url, body, signal) {
 }
 
 export const apiPost = (getToken, body, signal) => request(getToken, "POST", API, body, signal);
-export const apiStatus = (getToken, signal) => request(getToken, "GET", `${API}?action=status`, null, signal);
+// `checkCors` also makes the server ask the storage whether each allowed website address may upload.
+export const apiStatus = (getToken, signal, { checkCors = false } = {}) => request(getToken, "GET", `${API}?action=status${checkCors ? "&check=cors" : ""}`, null, signal);
 
 // Public: a short-lived link to watch one video (no login needed).
 export async function playLink(key, signal) {
@@ -83,10 +110,12 @@ export async function playLink(key, signal) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// One part: PUT to its one-time link, with progress and stall detection
+// One part: PUT to its one-time link, with progress and stall detection.
+// `data` is the part's bytes, already read into memory (see readPart).
 // ---------------------------------------------------------------------------------------------
-function putPart(url, blob, { signal, onBytes }) {
+function putPart(url, data, { signal, onBytes }) {
   return new Promise((resolve, reject) => {
+    const size = data.byteLength;
     const xhr = new XMLHttpRequest();
     let stalled = false;
     let last = Date.now();
@@ -111,7 +140,7 @@ function putPart(url, blob, { signal, onBytes }) {
     xhr.open("PUT", url);
     xhr.upload.onprogress = (e) => {
       last = Date.now();
-      if (e.lengthComputable) onBytes(Math.min(e.loaded, blob.size));
+      if (e.lengthComputable) onBytes(Math.min(e.loaded, size));
     };
     xhr.onload = () => {
       finish();
@@ -129,8 +158,24 @@ function putPart(url, blob, { signal, onBytes }) {
       if (signal && signal.aborted) reject(new UploadError("canceled", "Cancelled."));
       else reject(new UploadError(stalled ? "stalled" : "network", stalled ? "The connection stopped moving." : "The connection dropped.", { retryable: true }));
     };
-    xhr.send(blob);
+    xhr.send(data);
   });
+}
+
+// A part is read into memory once and sent from there (and re-sent from there if it has to be retried). Sending
+// straight from a file the phone's picker handed over can fail with a bare "network error" if Android has meanwhile
+// taken back access to that file, and then there would be no way to tell it apart from a bad signal.
+async function readPart(blob, start, size) {
+  let data;
+  try {
+    data = await blob.slice(start, start + size).arrayBuffer();
+  } catch (cause) {
+    throw new UploadError("file_unreadable", "This phone couldn't read the video file any more.", { retryable: false, readError: String((cause && cause.name) || cause) });
+  }
+  if (data.byteLength !== size) {
+    throw new UploadError("file_unreadable", "The video file changed while it was being sent.", { retryable: false, readError: `read ${data.byteLength} of ${size} bytes` });
+  }
+  return data;
 }
 
 async function whenOnline(signal) {
@@ -154,39 +199,88 @@ async function whenOnline(signal) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Bad signal, or is the storage refusing this browser? (its one-time "upload permission" / CORS rule)
+// Why did sending fail? The phone can't tell, so the server is asked.
 // ---------------------------------------------------------------------------------------------
-const BLOCKED_TEXT = "The storage isn't letting this phone send videos to it yet.";
 
-// A "no-cors" request needs no permission, so it only fails when the phone truly can't get to the storage's
-// address (no signal, no DNS). If it works while the real upload keeps failing before a single byte leaves,
-// the browser is being stopped by the storage's own rule about who may send it files, not by the signal.
+// A "no-cors" request needs no permission, so it only fails when this phone truly can't get to the storage's address
+// (no signal, a VPN, a private-DNS or ad-blocking filter...).
 async function storageReachable(url, signal) {
   let origin;
   try {
     origin = new URL(url).origin;
   } catch {
-    return false;
+    return null;
   }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 6000);
-  const stop = () => ctrl.abort();
-  if (signal) signal.addEventListener("abort", stop, { once: true });
+  const t = timedSignal(signal, 6000);
   try {
-    await fetch(`${origin}/`, { method: "GET", mode: "no-cors", cache: "no-store", credentials: "omit", signal: ctrl.signal });
+    await fetch(`${origin}/`, { method: "GET", mode: "no-cors", cache: "no-store", credentials: "omit", signal: t.signal });
     return true;
   } catch {
     return false;
   } finally {
-    clearTimeout(timer);
-    if (signal) signal.removeEventListener("abort", stop);
+    t.done();
   }
+}
+
+async function askServer(getToken, signal) {
+  const t = timedSignal(signal, 9000);
+  try {
+    return await apiStatus(getToken, t.signal, { checkCors: true });
+  } catch {
+    return null; // can't ask (no connection to the website either): carry on as an ordinary connection problem
+  } finally {
+    t.done();
+  }
+}
+
+// Returns { code: "wrong_address" | "blocked" | null, message, here, allowed, storageAllows, reachable }.
+//   wrong_address  this page is open at an address the storage was never set up to accept uploads from
+//   blocked        the storage says "no" to this page's address (the one-time permission is missing)
+//   neither        the storage accepts this address, so it's the connection (or the phone) after all
+async function diagnose(getToken, firstUrl, signal) {
+  const [reachable, status] = await Promise.all([storageReachable(firstUrl, signal), askServer(getToken, signal)]);
+  const here = thisAddress();
+  const cors = status && status.cors;
+  const allowed = cors && Array.isArray(cors.origins) ? cors.origins : [];
+  if (allowed.length && here && !allowed.includes(here)) {
+    return {
+      code: "wrong_address",
+      here,
+      allowed,
+      message: `This page is open at ${here}, but videos can only be sent from ${allowed.join(" or ")}. Open the admin from that address and add the video there. (If ${here} really is your website's address, add it to STORAGE_CORS_ORIGINS in Vercel and run the one-time setup again.)`,
+    };
+  }
+  const check = cors && Array.isArray(cors.checks) ? cors.checks.find((c) => c.origin === here) : null;
+  if (check && check.ok === false) {
+    return {
+      code: "blocked",
+      here,
+      allowed,
+      checkStatus: check.status,
+      message: `The storage hasn't been given permission to take uploads from ${here} yet (when the website's server asked it, the answer was no).`,
+    };
+  }
+  return { code: null, here, allowed, reachable, storageAllows: !!(check && check.ok === true) };
+}
+
+// A short line of facts to put under an error message, so a screenshot is enough to see what happened.
+function attemptDetail({ part, parts, attempt, sent, size, error }) {
+  const nav = typeof navigator !== "undefined" ? navigator : {};
+  const link = nav.connection && nav.connection.effectiveType ? `, ${nav.connection.effectiveType}` : "";
+  return [
+    `part ${part} of ${parts}`,
+    `try ${attempt + 1}`,
+    `${kb(sent)} of ${kb(size)} sent`,
+    error.status ? `storage said ${error.status}` : error.readError ? `file: ${error.readError}` : error.code,
+    `${nav.onLine === false ? "offline" : "online"}${link}`,
+    `page at ${thisAddress()}`,
+  ].join(" · ");
 }
 
 // ---------------------------------------------------------------------------------------------
 // All parts, a few at a time
 // ---------------------------------------------------------------------------------------------
-async function sendParts(s, blob, indexes, { signal, onProgress, onRetry, retryDelays = PART_RETRY_DELAYS }) {
+async function sendParts(s, blob, indexes, { getToken, signal, onProgress, onRetry, retryDelays = PART_RETRY_DELAYS }) {
   const queue = [...indexes];
   const inFlight = new Map(); // part index -> bytes sent so far
   const partSize = (i) => Math.min(s.partSize, blob.size - i * s.partSize);
@@ -203,42 +297,63 @@ async function sendParts(s, blob, indexes, { signal, onProgress, onRetry, retryD
     signal.addEventListener("abort", stop, { once: true });
   }
   let failure = null;
+  let diagnosis = null; // asked once per run: every part that fails shares the same answer
 
   async function sendOne(i) {
-    const piece = blob.slice(i * s.partSize, i * s.partSize + partSize(i));
-    for (let attempt = 0; ; attempt++) {
-      inFlight.set(i, 0);
-      report();
-      try {
-        await putPart(s.urls[i], piece, {
-          signal: killer.signal,
-          onBytes: (n) => {
-            inFlight.set(i, n);
-            report();
-          },
-        });
-        s.done.add(i);
-        inFlight.delete(i);
+    const size = partSize(i);
+    let data;
+    try {
+      data = await readPart(blob, i * s.partSize, size);
+    } catch (error) {
+      error.detail = attemptDetail({ part: i + 1, parts: s.urls.length, attempt: 0, sent: 0, size, error });
+      throw error;
+    }
+    try {
+      for (let attempt = 0; ; attempt++) {
+        inFlight.set(i, 0);
         report();
-        return;
-      } catch (error) {
-        const sentBefore = inFlight.get(i) || 0;
-        inFlight.delete(i);
-        report();
-        if (error.code === "canceled" || killer.signal.aborted) throw new UploadError("canceled", "Cancelled.");
-        // Failing twice either before a single byte leaves (the browser's permission check is refused) or only
-        // after the whole part went out (the answer is refused), while the storage can still be reached, is the
-        // storage refusing this browser, not a bad signal. A signal that drops cuts a part off half way instead.
-        // Say so at once instead of retrying for half a minute.
-        const nothingOrEverythingSent = sentBefore === 0 || sentBefore >= piece.size;
-        if (error.code === "network" && attempt >= 1 && nothingOrEverythingSent && s.done.size === 0 && (await storageReachable(s.urls[i], killer.signal))) {
-          throw new UploadError("blocked", BLOCKED_TEXT);
+        try {
+          await putPart(s.urls[i], data, {
+            signal: killer.signal,
+            onBytes: (n) => {
+              inFlight.set(i, n);
+              report();
+            },
+          });
+          s.done.add(i);
+          inFlight.delete(i);
+          report();
+          return;
+        } catch (error) {
+          const sent = inFlight.get(i) || 0;
+          inFlight.delete(i);
+          report();
+          if (error.code === "canceled" || killer.signal.aborted) throw new UploadError("canceled", "Cancelled.");
+          const detail = () => attemptDetail({ part: i + 1, parts: s.urls.length, attempt, sent, size, error });
+
+          // The second time a part fails with a bare "network error" before any part has got through, stop guessing:
+          // ask the server whether the storage would take uploads from this website at all.
+          if (error.code === "network" && attempt >= 1 && s.done.size === 0) {
+            if (!diagnosis) diagnosis = diagnose(getToken, s.urls[i], killer.signal);
+            const verdict = await diagnosis;
+            if (killer.signal.aborted) throw new UploadError("canceled", "Cancelled.");
+            if (verdict.code) {
+              throw new UploadError(verdict.code, verdict.message, { here: verdict.here, allowed: verdict.allowed, checkStatus: verdict.checkStatus, detail: detail() });
+            }
+            error.storageAllows = verdict.storageAllows;
+            error.unreachable = verdict.reachable === false;
+          }
+          if (!error.retryable || attempt >= retryDelays.length) {
+            error.detail = detail();
+            throw error;
+          }
+          if (onRetry) onRetry({ part: i + 1, attempt: attempt + 1, error });
+          await whenOnline(killer.signal);
+          await wait(retryDelays[attempt], killer.signal);
         }
-        if (!error.retryable || attempt >= retryDelays.length) throw error;
-        if (onRetry) onRetry({ part: i + 1, attempt: attempt + 1, error });
-        await whenOnline(killer.signal);
-        await wait(retryDelays[attempt], killer.signal);
       }
+    } finally {
+      data = null; // let go of the memory as soon as this part is finished (or given up on)
     }
   }
 
@@ -293,6 +408,7 @@ export async function uploadBlob(options) {
     const rate = now > t0 ? ((bytes - b0) / (now - t0)) * 1000 : 0;
     if (onProgress) onProgress({ bytes, total, fraction: total ? bytes / total : 0, bytesPerSecond: Math.max(0, rate), secondsLeft: rate > 1024 ? (total - bytes) / rate : null });
   };
+  const sendOptions = { getToken, signal, onProgress: progress, onRetry, retryDelays };
 
   try {
     if (!s.uploadId) {
@@ -305,7 +421,7 @@ export async function uploadBlob(options) {
     }
 
     const all = Array.from({ length: s.urls.length }, (_, i) => i);
-    await sendParts(s, blob, all.filter((i) => !s.done.has(i)), { signal, onProgress: progress, onRetry, retryDelays });
+    await sendParts(s, blob, all.filter((i) => !s.done.has(i)), sendOptions);
 
     for (let round = 0; ; round++) {
       try {
@@ -315,7 +431,7 @@ export async function uploadBlob(options) {
         if (error.code === "canceled") throw error;
         if (error.code === "incomplete" && round < 3 && Array.isArray(error.data && error.data.missing) && error.data.missing.length) {
           for (const n of error.data.missing) s.done.delete(n - 1);
-          await sendParts(s, blob, error.data.missing.map((n) => n - 1), { signal, onProgress: progress, onRetry, retryDelays });
+          await sendParts(s, blob, error.data.missing.map((n) => n - 1), sendOptions);
           continue;
         }
         if (error.code === "network" && round < 3) {
@@ -353,8 +469,8 @@ export async function deleteStored(getToken, key) {
 // ---------------------------------------------------------------------------------------------
 export async function runStorageTest(getToken, onStep) {
   const steps = [];
-  const record = (id, ok, text) => {
-    const step = { id, ok, text };
+  const record = (id, ok, text, extra) => {
+    const step = { id, ok, text, ...extra };
     steps.push(step);
     if (onStep) onStep(step);
     return step;
@@ -379,6 +495,7 @@ export async function runStorageTest(getToken, onStep) {
   }
   record("storage", true, "The server can reach the storage and the key works.");
 
+  // The real test: this phone's browser sends a small file, the way it will send a video.
   const bytes = new Uint8Array(64 * 1024);
   crypto.getRandomValues(bytes.subarray(0, 65536));
   let result;
@@ -387,14 +504,25 @@ export async function runStorageTest(getToken, onStep) {
   } catch (error) {
     if (error.session) await abortUpload(getToken, error.session);
     if (error.code === "blocked") {
-      record("upload", false, "This phone's browser was blocked from sending to the storage. That means the one-time “upload permission” setup hasn't been done yet. Use “One-time setup” below.");
+      record("upload", false, `${error.message} Use “One-time setup” below, then test again.`);
+    } else if (error.code === "wrong_address") {
+      record("upload", false, error.message);
     } else if (error.code === "network" || error.code === "stalled") {
-      record("upload", false, "The test file didn't get through. Check your signal and run the test again. If it keeps failing with a good signal, use “One-time setup” below.");
+      record(
+        "upload",
+        false,
+        error.storageAllows
+          ? "The storage does accept uploads from this website, but the test file still didn't get through. So the problem is this phone's connection: switch between Wi-Fi and mobile data, turn off any VPN, private DNS or ad-blocker, and test again."
+          : error.unreachable
+            ? "This phone can't reach the storage's address right now. Check your signal, switch between Wi-Fi and mobile data, turn off any VPN, private DNS or ad-blocker, and test again."
+            : "The test file didn't get through. Check your signal and run the test again. If it keeps failing with a good signal, use “One-time setup” below."
+      );
     } else if (error.code === "link_rejected") {
       record("upload", false, "The storage refused the upload link. Check STORAGE_KEY_ID and STORAGE_APP_KEY in Vercel, then redeploy.");
     } else {
       record("upload", false, error.message);
     }
+    if (error.detail) record("details", false, `Details: ${error.detail}`, { note: true });
     return steps;
   }
   record("upload", true, "This phone's browser can send files to the storage.");

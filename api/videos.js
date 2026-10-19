@@ -960,7 +960,9 @@ async function probeCors(ctx, cfg, origin) {
       signal: AbortSignal.timeout(6000),
     });
     await res.text().catch(() => "");
-    if (res.status >= 500) return { origin, ok: null, status: res.status };
+    // A busy storage (5xx), or "no such file" (404: the test name below isn't a real file, and a permission refusal
+    // is never a 404), tells us nothing about the permission itself.
+    if (res.status >= 500 || res.status === 404) return { origin, ok: null, status: res.status };
     const allow = res.headers.get("access-control-allow-origin") || "";
     const methods = (res.headers.get("access-control-allow-methods") || "").toUpperCase();
     return { origin, ok: res.status < 300 && (allow === origin || allow === "*") && (!methods || /\bPUT\b/.test(methods)), status: res.status };
