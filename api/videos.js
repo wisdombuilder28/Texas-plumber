@@ -671,11 +671,81 @@ async function verifyAdmin(ctx, req) {
 }
 
 // ---------------------------------------------------------------------------
-// One-time setup with a temporary Backblaze master key, supplied only by server-side environment
-// variables. Never accept master credentials from the browser or include them in logs/responses.
-// Remove the temporary environment variables and rotate the master key immediately after setup.
+// The browser's permission to send videos straight to the storage (a "CORS rule"), and the one-time
+// setup that creates it.
+//
+// A phone may only send a video to the storage if the storage has a rule saying "this website is allowed
+// to". Backblaze's website can't create that kind of rule. Only its API can, and only with a key that is
+// allowed to change bucket settings (the master key).
+//
+// So that the master key never goes near a browser, it is read ONLY from two temporary Vercel settings,
+// B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY. It is used for these few calls and forgotten: never
+// saved, logged or sent back. Delete both settings, and make a new master key in Backblaze, as soon as
+// the setup has worked.
+//
+// The setup changes exactly one thing: the rule named "nd-flow-browser-upload". Any other rule on the
+// bucket, its cleanup (lifecycle) rules and its public/private setting are left exactly as they are.
 // ---------------------------------------------------------------------------
 const B2_API = "https://api.backblazeb2.com/b2api/v4";
+const SETUP_ID_VAR = "B2_SETUP_MASTER_KEY_ID";
+const SETUP_KEY_VAR = "B2_SETUP_MASTER_KEY";
+
+// A plain "https://host" web address: no path, no wildcard, no password in it.
+function plainHttpsOrigin(text) {
+  let url;
+  try {
+    url = new URL(String(text).trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") return null;
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(url.hostname)) return null; // a real host name, never "*"
+  return url.origin;
+}
+
+// Every website address that may send videos straight to the storage: the live site, plus any extras listed
+// in STORAGE_CORS_ORIGINS. Never anything taken from a request.
+function corsOrigins(env) {
+  const origins = [PRODUCTION_ORIGIN];
+  const bad = [];
+  for (const entry of String(env.STORAGE_CORS_ORIGINS || "").split(",")) {
+    const text = entry.trim();
+    if (!text) continue;
+    const origin = plainHttpsOrigin(text);
+    if (!origin) bad.push(text.replace(/[^\x20-\x7e]/g, "?").slice(0, 80));
+    else if (!origins.includes(origin)) origins.push(origin);
+  }
+  return { origins: origins.slice(0, 5), bad };
+}
+
+function envText(value) {
+  let text = String(value == null ? "" : value).trim();
+  if (text.length >= 2 && (text[0] === '"' || text[0] === "'") && text[text.length - 1] === text[0]) text = text.slice(1, -1).trim();
+  return text;
+}
+
+// The temporary setup key, from Vercel's settings and from nowhere else. When something is wrong this says
+// which SETTING is wrong (its name), never what it contains.
+function readSetupKeys(env) {
+  const keyId = envText(env[SETUP_ID_VAR]);
+  const key = envText(env[SETUP_KEY_VAR]);
+  const missing = [];
+  if (!keyId) missing.push(SETUP_ID_VAR);
+  if (!key) missing.push(SETUP_KEY_VAR);
+  const present = !!(keyId || key);
+  const complete = !!(keyId && key);
+  if (missing.length) return { ok: false, present, complete, missing, bad: null };
+  if (!/^[A-Za-z0-9]{8,64}$/.test(keyId)) return { ok: false, present, complete, missing: [], bad: SETUP_ID_VAR };
+  if (!/^[A-Za-z0-9+/_=-]{16,128}$/.test(key)) return { ok: false, present, complete, missing: [], bad: SETUP_KEY_VAR };
+  return { ok: true, present, complete, keyId, key };
+}
+
+// Takes the keys out of any text before it can be shown or logged.
+function redact(text, secrets) {
+  let out = String(text);
+  for (const secret of secrets) if (secret && secret.length >= 6) out = out.split(secret).join("[hidden]");
+  return out;
+}
 
 async function b2Json(ctx, url, { method = "POST", token, body } = {}) {
   let res;
@@ -691,106 +761,236 @@ async function b2Json(ctx, url, { method = "POST", token, body } = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(res.status === 401 ? 401 : 502, "b2_error", `Backblaze said: ${data.message || data.code || "HTTP " + res.status}`, { b2Code: data.code });
+    // A key that may not change bucket settings (a normal app key instead of the master key) is refused with "unauthorized".
+    if (data.code === "unauthorized") {
+      throw new ApiError(
+        400,
+        "b2_key_too_weak",
+        `The key in ${SETUP_ID_VAR} isn't allowed to change bucket settings (Backblaze said: ${data.message || "unauthorized"}). Use the master application key, not a normal app key.`,
+        { b2Code: data.code, b2Status: res.status }
+      );
+    }
+    // Never pass Backblaze's 401 on as our own: this page reads a 401 as "you were signed out".
+    const status = res.status === 401 || res.status === 403 ? 400 : res.status === 409 ? 409 : 502;
+    throw new ApiError(status, "b2_error", `Backblaze said: ${data.message || data.code || "HTTP " + res.status}`, { b2Code: data.code, b2Status: res.status });
   }
   return data;
 }
 
-async function setupBucket(ctx, cfg, { keyId, key }, origins) {
-  const basic = Buffer.from(`${keyId}:${key}`).toString("base64");
+// ----- comparing and merging bucket rules -----
+const dropNulls = (rule) => Object.fromEntries(Object.entries(rule || {}).filter(([, v]) => v !== null && v !== undefined));
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(value[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+const sameList = (a, b, lower) => {
+  const norm = (v) =>
+    (Array.isArray(v) ? v : [])
+      .map((x) => (lower ? String(x).toLowerCase() : String(x)))
+      .sort()
+      .join("\n");
+  return norm(a) === norm(b);
+};
+
+// Same rule, ignoring the order of the lists and the capital letters in header names.
+function sameRule(a, b) {
+  return (
+    a.corsRuleName === b.corsRuleName &&
+    sameList(a.allowedOrigins, b.allowedOrigins) &&
+    sameList(a.allowedOperations, b.allowedOperations, true) &&
+    sameList(a.allowedHeaders, b.allowedHeaders, true) &&
+    sameList(a.exposeHeaders, b.exposeHeaders, true) &&
+    Number(a.maxAgeSeconds) === Number(b.maxAgeSeconds)
+  );
+}
+
+// The one rule this site needs: these website addresses may PUT (upload) and GET (play).
+function wantedCorsRule(origins) {
+  return {
+    corsRuleName: CORS_RULE_NAME,
+    allowedOrigins: origins,
+    allowedOperations: ["s3_put", "s3_get"],
+    allowedHeaders: ["*"],
+    exposeHeaders: ["ETag"],
+    maxAgeSeconds: 3600,
+  };
+}
+
+// What to send to Backblaze: every rule that is already there, untouched, with our own rule added or
+// replaced in its place. `change` is false when our rule is already exactly right (then nothing is sent).
+function planCors(existingRaw, wanted) {
+  const existing = (Array.isArray(existingRaw) ? existingRaw : []).map(dropNulls);
+  const at = existing.findIndex((r) => r.corsRuleName === wanted.corsRuleName);
+  if (at >= 0 && sameRule(existing[at], wanted)) return { change: false, rules: existing };
+  const rules = existing.slice();
+  if (at >= 0) rules[at] = wanted;
+  else rules.push(wanted);
+  return { change: true, rules };
+}
+
+// A cleanup rule that hides files a number of days after they were uploaded would, sooner or later, make
+// the videos disappear. The setup never edits cleanup rules, but it tells you if one like that exists.
+function lifecycleRisk(rules) {
+  return (Array.isArray(rules) ? rules : []).some((r) => {
+    if (!r || typeof r.daysFromUploadingToHiding !== "number") return false;
+    const prefix = String(r.fileNamePrefix || "");
+    return "videos/".startsWith(prefix) || prefix.startsWith("videos/");
+  });
+}
+
+async function setupBucketInner(ctx, cfg, { keyId, key }, origins) {
   let authRes;
   try {
     authRes = await ctx.fetch(`${B2_API}/b2_authorize_account`, {
-      headers: { Authorization: `Basic ${basic}` },
+      headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${key}`).toString("base64")}` },
       signal: AbortSignal.timeout(20000),
     });
   } catch {
     throw new ApiError(502, "b2_unreachable", "Couldn't reach Backblaze. Try again in a minute.");
   }
   const auth = await authRes.json().catch(() => ({}));
-  if (!authRes.ok) {
+  if (authRes.status === 400 || authRes.status === 401 || authRes.status === 403) {
     throw new ApiError(
       400,
       "b2_bad_key",
-      "Backblaze didn't accept the temporary setup key. Check B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY in Vercel, then redeploy."
+      `Backblaze didn't accept the setup key stored in Vercel (${SETUP_ID_VAR} and ${SETUP_KEY_VAR}). Make a new master key in Backblaze, put both values into Vercel again, redeploy, then try again.`
     );
   }
-  const apiUrl = auth.apiInfo?.storageApi?.apiUrl;
+  if (!authRes.ok) throw new ApiError(502, "b2_error", "Backblaze is having trouble right now. Try again in a minute.");
+
+  const storageApi = (auth.apiInfo && auth.apiInfo.storageApi) || {};
+  const apiUrl = storageApi.apiUrl;
   const token = auth.authorizationToken;
   const accountId = auth.accountId;
   if (!apiUrl || !token || !accountId) throw new ApiError(502, "b2_odd_reply", "Backblaze's reply wasn't what we expected.");
 
-  const listed = await b2Json(ctx, `${apiUrl}/b2api/v4/b2_list_buckets`, { token, body: { accountId, bucketName: cfg.bucket } });
-  const bucket = (listed.buckets || [])[0];
-  if (!bucket) {
-    throw new ApiError(404, "b2_no_bucket", `That Backblaze account has no bucket called "${cfg.bucket}". Check STORAGE_BUCKET in Vercel.`);
+  const listBucket = async () => {
+    const listed = await b2Json(ctx, `${apiUrl}/b2api/v4/b2_list_buckets`, { token, body: { accountId, bucketName: cfg.bucket } });
+    const found = (listed.buckets || [])[0];
+    if (!found) {
+      throw new ApiError(404, "b2_no_bucket", `That Backblaze account has no bucket called "${cfg.bucket}". Check STORAGE_BUCKET in Vercel.`);
+    }
+    return found;
+  };
+
+  const wanted = wantedCorsRule(origins);
+  const before = await listBucket();
+  let bucket = before;
+  let changed = false;
+  for (let attempt = 0; ; attempt++) {
+    const plan = planCors(bucket.corsRules, wanted);
+    if (!plan.change) break; // already exactly right: leave the bucket alone
+    if (plan.rules.length > 100) {
+      throw new ApiError(400, "b2_too_many_rules", "This bucket already has the most CORS rules Backblaze allows (100). Delete one you don't need, then try again.");
+    }
+    try {
+      // Only the CORS list is sent. Cleanup rules and public/private are not in the request, so they stay as they are.
+      await b2Json(ctx, `${apiUrl}/b2api/v4/b2_update_bucket`, {
+        token,
+        body: { accountId, bucketId: bucket.bucketId, ifRevisionIs: bucket.revision, corsRules: plan.rules },
+      });
+      changed = true;
+      break;
+    } catch (error) {
+      const conflict = error instanceof ApiError && error.extra && (error.extra.b2Code === "conflict" || error.extra.b2Status === 409);
+      if (!conflict) throw error;
+      if (attempt >= 1) throw new ApiError(409, "b2_conflict", "The bucket's settings were changed by someone else while this ran. Wait a minute and try again.");
+      bucket = await listBucket(); // somebody edited it a moment ago: plan again from what is there now
+    }
   }
 
-  // Update only our own CORS rule. Preserve any other rules created by the bucket owner.
-  const existingCorsRules = Array.isArray(bucket.corsRules) ? bucket.corsRules : [];
-  const corsRules = [
-    ...existingCorsRules.filter((rule) => rule && rule.corsRuleName !== "nd-flow-browser-upload"),
-    {
-      corsRuleName: "nd-flow-browser-upload",
-      allowedOrigins: origins,
-      allowedOperations: ["s3_put", "s3_get"],
-      allowedHeaders: ["*"],
-      exposeHeaders: ["ETag"],
-      maxAgeSeconds: 3600,
-    },
-  ];
-
-  // Do not overwrite lifecycle rules. Video deletes explicitly remove every version, and
-  // bucket lifecycle configuration may contain unrelated rules managed by the owner.
-  await b2Json(ctx, `${apiUrl}/b2api/v4/b2_update_bucket`, {
-    token,
-    body: { accountId, bucketId: bucket.bucketId, ifRevisionIs: bucket.revision, corsRules },
-  });
-
-  // Read it back so the page can say what was really saved.
-  const after = await b2Json(ctx, `${apiUrl}/b2api/v4/b2_list_buckets`, { token, body: { accountId, bucketName: cfg.bucket } });
-  const saved = (after.buckets || [])[0] || {};
-  const rule = (saved.corsRules || []).find((r) => r.corsRuleName === "nd-flow-browser-upload");
+  // Read it back, so what the page says is what is really saved.
+  const after = changed ? await listBucket() : bucket;
+  const afterRules = (after.corsRules || []).map(dropNulls);
+  const mine = afterRules.find((r) => r.corsRuleName === CORS_RULE_NAME);
+  const others = (rules) => (rules || []).map(dropNulls).filter((r) => r.corsRuleName !== CORS_RULE_NAME);
+  const othersBefore = others(before.corsRules);
+  const othersAfter = others(after.corsRules);
   const s3Host = (() => {
     try {
-      return new URL(auth.apiInfo.storageApi.s3ApiUrl).host;
+      return new URL(storageApi.s3ApiUrl).host;
     } catch {
       return null;
     }
   })();
   return {
-    corsSaved: !!rule && (rule.allowedOperations || []).includes("s3_put"),
-    origins: rule ? rule.allowedOrigins : [],
-    bucketType: saved.bucketType || bucket.bucketType,
+    corsSaved: !!mine && wanted.allowedOrigins.every((o) => (mine.allowedOrigins || []).includes(o)) && (mine.allowedOperations || []).includes("s3_put"),
+    corsChanged: changed,
+    origins: mine ? mine.allowedOrigins : [],
+    otherCorsRules: othersAfter.length,
+    othersKept: othersBefore.length === othersAfter.length && othersBefore.every((r) => othersAfter.some((a) => stableJson(a) === stableJson(r))),
+    lifecycleRules: (after.lifecycleRules || []).length,
+    lifecycleUntouched: stableJson(before.lifecycleRules || []) === stableJson(after.lifecycleRules || []),
+    lifecycleRisk: lifecycleRisk(after.lifecycleRules),
+    bucketType: after.bucketType || null,
+    bucketTypeUnchanged: !before.bucketType || before.bucketType === after.bucketType,
     s3Host,
     endpointMatches: s3Host ? s3Host === cfg.host : null,
   };
 }
 
+// The master key lives only inside this function. Whatever comes out of it, an answer or an error, is
+// scrubbed of the keys first, and nothing else about a failure is ever logged.
+async function setupBucket(ctx, cfg, keys, origins) {
+  const secrets = [keys.keyId, keys.key, Buffer.from(`${keys.keyId}:${keys.key}`).toString("base64")];
+  try {
+    return await setupBucketInner(ctx, cfg, keys, origins);
+  } catch (error) {
+    if (error instanceof ApiError) throw new ApiError(error.status, error.code, redact(error.message, secrets), error.extra);
+    console.error("One-time setup stopped unexpectedly.");
+    throw new ApiError(502, "b2_failed", "Setup stopped unexpectedly. Look at the bucket's CORS rules in Backblaze, then try again.");
+  }
+}
+
+// ----- asking the storage "would you let this website send a video?" (the preflight a phone sends first) -----
+async function probeCors(ctx, cfg, origin) {
+  const url = `https://${cfg.host}${objectPath(cfg, "test/cors-check.bin")}`;
+  try {
+    const res = await ctx.fetch(url, {
+      method: "OPTIONS",
+      headers: { Origin: origin, "Access-Control-Request-Method": "PUT" },
+      signal: AbortSignal.timeout(6000),
+    });
+    await res.text().catch(() => "");
+    if (res.status >= 500) return { origin, ok: null, status: res.status };
+    const allow = res.headers.get("access-control-allow-origin") || "";
+    const methods = (res.headers.get("access-control-allow-methods") || "").toUpperCase();
+    return { origin, ok: res.status < 300 && (allow === origin || allow === "*") && (!methods || /\bPUT\b/.test(methods)), status: res.status };
+  } catch {
+    return { origin, ok: null, status: 0 }; // couldn't ask: that is not the same as "no"
+  }
+}
+
+function checkCors(ctx, cfg, origins) {
+  return Promise.all(origins.map((origin) => probeCors(ctx, cfg, origin)));
+}
+
 // ---------------------------------------------------------------------------
 // Request handling
 // ---------------------------------------------------------------------------
-function cleanOrigins(req, env) {
-  const set = new Set();
-  const add = (o) => {
-    try {
-      const u = new URL(String(o).trim());
-      if (u.protocol === "https:") set.add(u.origin);
-    } catch {
-      /* ignore */
-    }
-  };
-  add(getHeader(req, "origin"));
-  add("https://nd-flow-plumbing.vercel.app");
-  String(env.STORAGE_CORS_ORIGINS || "")
-    .split(",")
-    .filter(Boolean)
-    .forEach(add);
-  return [...set];
-}
-
 function isInt(n) {
   return typeof n === "number" && Number.isInteger(n);
+}
+
+// Names a password or key could travel under. Looked for in every request, in the body (any depth) and in
+// the web address, and a match is refused outright.
+const SECRET_FIELD = /(master|secret|passw|credential|private|app[-_ ]?key|application[-_ ]?key|access[-_ ]?key|key[-_ ]?id|authoriz|bearer|token)/i;
+function findSecretLikeField(value, depth = 0) {
+  if (!value || typeof value !== "object" || depth > 4) return null;
+  for (const [name, inner] of Object.entries(value)) {
+    if (SECRET_FIELD.test(name)) return name;
+    const found = findSecretLikeField(inner, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 async function actionPlay(ctx, cfg, url) {
@@ -806,7 +1006,15 @@ async function actionPlay(ctx, cfg, url) {
   };
 }
 
-async function actionStatus(ctx, cfg) {
+// Whether the temporary setup key is still sitting in Vercel (yes/no only, never what it is).
+function setupKeyState(env) {
+  const keys = readSetupKeys(env);
+  return { keysPresent: keys.present, keysComplete: keys.complete };
+}
+
+async function actionStatus(ctx, cfg, url) {
+  const wantChecks = url.searchParams.get("check") === "cors";
+  const { origins } = corsOrigins(ctx.env);
   const base = {
     configured: true,
     provider: cfg.provider,
@@ -818,15 +1026,31 @@ async function actionStatus(ctx, cfg) {
       partSize: LIMITS.partSize,
       capBytes: cfg.capBytes,
     },
+    // The website addresses allowed to send videos to the storage. With ?check=cors the storage is also
+    // asked, from here, whether it really lets each of them (what a phone's browser asks first).
+    cors: { origins },
+    setup: setupKeyState(ctx.env),
   };
-  try {
-    const usage = await listUsage(ctx, cfg);
-    return { ...base, storageOk: true, usedBytes: usage.bytes, objectCount: usage.count };
-  } catch (e) {
-    if (!(e instanceof StorageError)) throw e;
-    console.error("Storage check failed:", e.status, e.code);
-    return { ...base, storageOk: false, usedBytes: null, problem: explainStorageError(e), detail: e.code || String(e.status || "") };
+  const [usage, checks] = await Promise.all([
+    listUsage(ctx, cfg).then(
+      (value) => ({ value }),
+      (error) => ({ error })
+    ),
+    wantChecks ? checkCors(ctx, cfg, origins) : Promise.resolve(null),
+  ]);
+  if (checks) base.cors.checks = checks;
+  if (usage.error) {
+    if (!(usage.error instanceof StorageError)) throw usage.error;
+    console.error("Storage check failed:", usage.error.status, usage.error.code);
+    return {
+      ...base,
+      storageOk: false,
+      usedBytes: null,
+      problem: explainStorageError(usage.error),
+      detail: usage.error.code || String(usage.error.status || ""),
+    };
   }
+  return { ...base, storageOk: true, usedBytes: usage.value.bytes, objectCount: usage.value.count };
 }
 
 async function actionInit(ctx, cfg, body) {
@@ -943,20 +1167,36 @@ async function actionCleanup(ctx, cfg) {
   return { ok: true, aborted };
 }
 
-async function actionSetup(ctx, cfg, req) {
-  // High-privilege credentials must never arrive in a browser request. They may only be
-  // configured temporarily as server-side Vercel environment variables for this one-time task.
-  const keyId = String(ctx.env.B2_SETUP_MASTER_KEY_ID || "").trim();
-  const key = String(ctx.env.B2_SETUP_MASTER_KEY || "").trim();
-  if (!/^[A-Za-z0-9]{8,64}$/.test(keyId) || !/^[A-Za-z0-9+/_=-]{16,128}$/.test(key)) {
+async function actionSetup(ctx, cfg, body) {
+  // Setup takes no input at all. The Backblaze key is read from Vercel's settings on the server, never from
+  // the request, and the website address that gets the permission is fixed (see corsOrigins).
+  if (Object.keys(body).some((name) => name !== "action")) {
+    throw new ApiError(400, "setup_takes_no_input", "Setup doesn't take any input. The Backblaze key is read from Vercel's settings, never from this page.");
+  }
+  const keys = readSetupKeys(ctx.env);
+  if (!keys.ok) {
+    if (keys.bad) {
+      throw new ApiError(
+        400,
+        "setup_credentials_bad",
+        `${keys.bad} in Vercel doesn't look like a Backblaze key. Copy it again from Backblaze (no spaces, no quotes), save it in Vercel, redeploy, then try again.`
+      );
+    }
     throw new ApiError(
-      503,
+      501,
       "setup_credentials_missing",
-      "One-time setup credentials aren't configured on the server. Add B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY as sensitive server-side Vercel environment variables, redeploy, then try again."
+      `One-time setup needs the temporary Backblaze master key in Vercel. Missing: ${keys.missing.join(" and ")}. Add ${keys.missing.length > 1 ? "them" : "it"} under Settings → Environment Variables (Production), redeploy, then try again.`
     );
   }
-  const result = await setupBucket(ctx, cfg, { keyId, key }, cleanOrigins(req, ctx.env));
-  return { ok: true, ...result };
+  const { origins, bad } = corsOrigins(ctx.env);
+  if (bad.length) {
+    // The wrong entry is shown so it can be fixed, but never with a password in it or anything that looks like the setup key.
+    const shown = redact(bad[0], [keys.keyId, keys.key]).replace(/\/\/[^/@\s]*@/, "//");
+    throw new ApiError(400, "bad_cors_origins", `STORAGE_CORS_ORIGINS in Vercel has an entry that isn't a plain https web address: "${shown}". Use the form https://www.example.com (no path, no *).`);
+  }
+  const result = await setupBucket(ctx, cfg, keys, origins);
+  // Then ask the storage, as a phone's browser would, whether it now lets each address through.
+  return { ok: true, ...result, checks: await checkCors(ctx, cfg, origins) };
 }
 
 async function handle(ctx, req) {
@@ -966,6 +1206,14 @@ async function handle(ctx, req) {
   if (method !== "GET" && !isPost) throw new ApiError(405, "method", "Method not allowed.");
 
   const body = isPost ? await readJsonBody(req) : {};
+  // Nothing here ever needs a password or key in a request, so one is refused before anything else is read.
+  if (findSecretLikeField(body) || findSecretLikeField(Object.fromEntries(url.searchParams))) {
+    throw new ApiError(
+      400,
+      "keys_not_accepted",
+      "Passwords and keys are never accepted in a request to this address. Backblaze keys go in Vercel's Environment Variables only (see VIDEO_SETUP.md)."
+    );
+  }
   const action = String(url.searchParams.get("action") || body.action || "");
   const cfg = readStorageConfig(ctx.env);
 
@@ -982,9 +1230,9 @@ async function handle(ctx, req) {
 
   if (action === "status") {
     if (!cfg.ok) {
-      return jsonResponse(200, { configured: false, missing: cfg.missing || [], problem: cfg.bad || null });
+      return jsonResponse(200, { configured: false, missing: cfg.missing || [], problem: cfg.bad || null, setup: setupKeyState(ctx.env) });
     }
-    return jsonResponse(200, await actionStatus(ctx, cfg));
+    return jsonResponse(200, await actionStatus(ctx, cfg, url));
   }
 
   if (!isPost) throw new ApiError(405, "method", "Use POST.");
@@ -1004,7 +1252,7 @@ async function handle(ctx, req) {
     case "cleanup":
       return jsonResponse(200, await actionCleanup(ctx, cfg));
     case "setup":
-      return jsonResponse(200, await actionSetup(ctx, cfg, req));
+      return jsonResponse(200, await actionSetup(ctx, cfg, body));
     default:
       throw new ApiError(400, "bad_action", "Unknown action.");
   }
@@ -1061,6 +1309,17 @@ handler._internals = {
   verifyFirebaseIdToken,
   xmlTag,
   xmlBlocks,
+  PRODUCTION_ORIGIN,
+  CORS_RULE_NAME,
+  corsOrigins,
+  plainHttpsOrigin,
+  readSetupKeys,
+  redact,
+  sameRule,
+  planCors,
+  wantedCorsRule,
+  lifecycleRisk,
+  findSecretLikeField,
 };
 
 module.exports = handler;
