@@ -30,7 +30,7 @@ Push to GitHub as usual.
 
 ## 2. Backblaze (the free storage)
 
-1. **backblaze.com** → B2 Cloud Storage → **Sign up**. Their sign-up page says *“No credit card required.”* Confirm your email. Turn on **two-factor sign-in** for this account (Account → My Settings) — it holds all the videos.
+1. **backblaze.com** → B2 Cloud Storage → **Sign up**. Their sign-up page says *“No credit card required.”* Confirm your email. Turn on **two-factor verification** for this account (in **My Settings**). It holds all the videos.
 2. **Buckets** → **Create a Bucket**.
    - Name: something unique, e.g. `ndflow-videos-2026`.
    - Choose **Private**. Never make it public: the site gives visitors a temporary link when they press play.
@@ -144,16 +144,16 @@ After you change anything in Vercel, redeploy again.
 Tick these once. They are what keeps the videos, the storage and the admin safe.
 
 - [ ] The admin has a strong, unique password, and only **one** document sits in the Firestore `admins` collection (yours).
-- [ ] Backblaze account: two-factor sign-in on; Caps & Alerts set.
+- [ ] Backblaze account: two-factor verification on; Caps & Alerts set.
 - [ ] The bucket is **Private** (the setup warns you if it isn't).
 - [ ] `STORAGE_*` and `FIREBASE_SERVICE_ACCOUNT_JSON` are **Production only** and **Secret**.
 - [ ] No `B2_SETUP_…` settings in Vercel, and the Backblaze master key was regenerated after the setup.
-- [ ] The latest `firestore.rules` is published (Firebase → Firestore → Rules shows today's date).
+- [ ] The latest `firestore.rules` is published (the Rules tab in Firebase Firestore shows the `videos` section).
 - [ ] You always use `https://nd-flow-plumbing.vercel.app/admin`.
 
 Good to know:
 
-- **Who can do what.** Only someone signed in as the admin (checked on the server, against the `admins` list) can upload or delete. Anyone can *watch* a video on Recent Work: the site hands out a temporary link (valid for hours) for each video that is shown there. That is by design.
+- **Who can do what.** Only someone signed in as the admin (checked on the server, against the `admins` list) can upload or delete. Anyone can *watch* a video on Recent Work: when someone presses play, the server hands out a temporary link (valid for hours). That is by design.
 - **Keys are 24 random characters** and are never listed publicly, but a link that was shared can be opened by whoever has it until it expires. Videos you don't want public shouldn't be posted.
 - **The service account** in `FIREBASE_SERVICE_ACCOUNT_JSON` is powerful if it is the default Firebase one. Keeping it Production-only and Secret is the main protection. For extra care, create a separate service account with only “Cloud Datastore Viewer” and GA4 “Viewer”.
 

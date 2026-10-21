@@ -150,15 +150,17 @@
             </div>
             <div class="v-setup-block">
               <h3>2. One-time setup <small>(only if the test says uploads are blocked)</small></h3>
-              <p>Backblaze needs a CORS rule to allow this website to upload videos directly. For safety, <strong>never paste a Backblaze master key into this page</strong>. The setup endpoint reads temporary credentials from server-side Vercel environment variables instead.</p>
+              <p>Backblaze has to be told that <strong>this website</strong> is allowed to send videos to your storage (a “CORS” rule). Setting it needs Backblaze's master key, once. <strong>Never paste that key into this page or send it to anyone.</strong> It goes into Vercel, where only the server can read it, and comes out again afterwards.</p>
               <ol class="v-howto">
-                <li>In Backblaze → <strong>Application Keys</strong>, generate a temporary <strong>Master Application Key</strong>. Copy its Key ID and Application Key and keep them private.</li>
-                <li>In Vercel → Project → <strong>Settings → Environment Variables</strong>, add <code>B2_SETUP_MASTER_KEY_ID</code> and <code>B2_SETUP_MASTER_KEY</code>. Mark both sensitive/private, select <strong>Production</strong>, save, and redeploy.</li>
-                <li>Return here and tap <strong>Configure upload permissions</strong>. The server uses the temporary credentials; this page never receives them.</li>
-                <li>After success, remove both <code>B2_SETUP_…</code> variables from Vercel and redeploy. Then generate a new master key in Backblaze to invalidate the temporary one. Finally run <strong>Test storage</strong> again.</li>
+                <li>In Backblaze → <strong>Application Keys</strong>, tap <strong>Generate New Master Application Key</strong>. Copy the Key ID and the Application Key (it is shown only once).</li>
+                <li>In Vercel → your project → <strong>Settings → Environment Variables</strong>, add two variables, <code>B2_SETUP_MASTER_KEY_ID</code> and <code>B2_SETUP_MASTER_KEY</code>. Choose <strong>Production</strong> only, and switch on <strong>Secret</strong> (some screens call it <strong>Sensitive</strong>) so the value can't be read back.</li>
+                <li><strong>Redeploy</strong> (Deployments → ⋯ → Redeploy). Variables only reach the website after a redeploy.</li>
+                <li>Open this page at <strong>https://nd-flow-plumbing.vercel.app/admin/videos.html</strong>, not at a preview address, and tap <strong>Configure upload permissions</strong>. The server uses the key; this page never sees it.</li>
+                <li><strong>Right after it says Done:</strong> delete both <code>B2_SETUP_…</code> variables in Vercel, redeploy, then tap <strong>Generate New Master Application Key</strong> in Backblaze again. That cancels the temporary key. Your upload keys (<code>STORAGE_KEY_ID</code>, <code>STORAGE_APP_KEY</code>) keep working.</li>
+                <li>Come back and run <strong>Test storage</strong> (step 1).</li>
               </ol>
               <button type="button" id="setup-btn" class="btn-accent">Configure upload permissions</button>
-              <p id="setup-result" class="form-message" role="status" hidden></p>
+              <div id="setup-result" class="v-setup-result" role="status" aria-live="polite" hidden></div>
             </div>
           </div>
         </details>

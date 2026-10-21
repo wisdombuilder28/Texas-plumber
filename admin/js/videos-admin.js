@@ -120,6 +120,7 @@ const ICONS = {
   pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
 };
 function icon(name, size = 18) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -322,9 +323,33 @@ function runTestNow() {
   testBtn.click();
 }
 
+// Notes that belong under the storage box whatever state it is in: opened from the wrong address, and the
+// temporary Backblaze master key still sitting in Vercel after the one-time setup.
+function flagNotes() {
+  const notes = [];
+  if (!status) return notes;
+  const origins = (status.cors && status.cors.origins) || [];
+  const here = location.origin;
+  if (origins.length && !origins.includes(here)) {
+    notes.push(
+      el("p", { class: "v-meter-note v-flag", role: "alert" }, document.createTextNode(`This page is open at ${here}, but videos can only be uploaded from ${origins.join(" or ")}. Open the admin from that address to add videos.`))
+    );
+  }
+  if (status.setup && status.setup.keysPresent) {
+    notes.push(
+      el(
+        "p",
+        { class: "v-meter-note v-flag", role: "alert" },
+        document.createTextNode("Security: the temporary Backblaze master key is still stored in Vercel. Delete B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY there, redeploy, then make a new master key in Backblaze. "),
+        el("button", { type: "button", class: "link-btn", text: "Show me how", onclick: openSetup })
+      )
+    );
+  }
+  return notes;
+}
+
 function renderStorage() {
   storageBox.className = "v-storage";
-  const buttons = [];
   const again = () => el("button", { type: "button", class: "btn-ghost-dark", text: "Check again", onclick: loadStatus });
   const setup = () => el("button", { type: "button", class: "btn-ghost-dark", text: "Open storage setup", onclick: openSetup });
 
@@ -346,6 +371,7 @@ function renderStorage() {
     const missing = (status.missing || []).length ? ` These settings are missing in Vercel: ${status.missing.join(", ")}.` : "";
     storageBox.replaceChildren(
       el("p", { text: `Video storage isn't set up yet.${missing}${status.problem ? ` ${status.problem}` : ""}` }),
+      ...flagNotes(),
       el("div", { class: "v-storage-actions" }, setup(), again())
     );
     return;
@@ -354,6 +380,7 @@ function renderStorage() {
     storageBox.classList.add("is-error");
     storageBox.replaceChildren(
       el("p", { text: status.problem || "The website can't reach the video storage right now." }),
+      ...flagNotes(),
       el("div", { class: "v-storage-actions" }, setup(), again())
     );
     return;
@@ -374,6 +401,11 @@ function renderStorage() {
     parts.push(el("div", { class: "v-meter-track", role: "img", "aria-label": `${Math.round(ratio * 100)} percent of the video storage is used` }, fill));
     if (ratio >= 1) parts.push(el("p", { class: "v-meter-note", text: "The storage is full. Delete some old videos before adding new ones." }));
     else if (ratio >= 0.8) parts.push(el("p", { class: "v-meter-note", text: "Getting full. Delete old videos you no longer need to make room." }));
+  }
+  const flags = flagNotes();
+  if (flags.length) {
+    storageBox.classList.add("is-warn");
+    parts.push(...flags);
   }
   if (!storageWorksHere()) {
     parts.push(
@@ -506,6 +538,7 @@ function dropShrunk(j) {
   j.look = null;
   j.showing = "after";
   j.previewBroken = false;
+  j.brokenOk = false;
 }
 
 function block(j, text) {
@@ -595,11 +628,17 @@ function computeNotes(j) {
     notes.push({ kind: "error", text: j.blocked });
     return notes;
   }
-  if (j.error) notes.push({ kind: "error", text: j.error.text, action: j.error.action });
+  if (j.error) notes.push({ kind: "error", text: j.error.text, action: j.error.action, detail: j.error.detail });
   if (j.stage === "ready" && j.info) {
     if (j.spaceProblem) notes.push({ kind: "error", text: j.spaceProblem });
-    if (j.autoAsIs && j.opts.asIs && !j.asIsForced) notes.push({ kind: "info", text: "This video is already small, so it will be uploaded as it is." });
-    if (j.asIsForced) notes.push({ kind: "info", text: "This browser can't make a smaller copy, so the video will be uploaded as it is." });
+    if (j.asIsForced) {
+      notes.push({ kind: "info", text: "This browser can't make a smaller copy, so the video will be uploaded as it is. That keeps anything the phone saved inside the file, which can include where it was filmed." });
+    } else if (j.opts.asIs) {
+      notes.push({
+        kind: "info",
+        text: `${j.autoAsIs ? "This video is already small, so it will be uploaded as it is. " : ""}That keeps anything the phone saved inside the file, which can include where it was filmed. To make a clean copy instead, open “Picture size and quality” and untick “Upload this file as it is”.`,
+      });
+    }
     if (j.info.hdr) notes.push({ kind: "warn", text: "This looks like an HDR video, so its colours may look a little flat after shrinking. Check the preview before posting." });
     if (!j.info.audio) notes.push({ kind: "info", text: "This video has no sound." });
     if (j.plan && j.plan.limitedBySize && !j.opts.asIs) notes.push({ kind: "warn", text: "To fit the size limit this long video has to be squeezed harder, so it will look softer than usual." });
@@ -611,7 +650,15 @@ function computeNotes(j) {
       const how = j.look.delta > 10 ? "brighter" : j.look.delta < -10 ? "darker" : "different in contrast";
       notes.push({ kind: "warn", text: `Heads-up: the smaller copy looks ${how} than the original. Play both with the buttons under the video and check you're happy with it. If it looks wrong, tap “Choose another size or quality”.` });
     }
-    if (j.previewBroken) notes.push({ kind: "warn", text: "This browser can't show a preview of the smaller copy, but it can still be posted." });
+    if (j.previewBroken && j.shrunk.asIs) {
+      notes.push({ kind: "warn", text: "This browser can't show a preview of this video (a phone format it can't play here), but it can still be posted." });
+    } else if (j.previewBroken) {
+      notes.push({
+        kind: "warn",
+        text: `This browser couldn't play the smaller copy it just made, so the copy may be damaged. Press play to check. If it doesn't play, don't post it: tap “Not happy with it? Choose another size or quality”${j.asIsOk ? ", or choose “Upload this file as it is”" : ""}.`,
+      });
+    }
+    if (j.shrunk.fellBack) notes.push({ kind: "warn", text: "This phone's video encoder stopped on the usual MP4 format, so the smaller copy was made as WebM instead. WebM plays in Chrome, Edge, Firefox and on Android; some older iPhones may not play it." });
   }
   return notes;
 }
@@ -621,6 +668,7 @@ function renderNotes(j) {
     ...computeNotes(j).map((n) => {
       const p = el("p", { class: `v-note is-${n.kind === "warn" ? "warn" : n.kind === "error" ? "error" : n.kind === "ok" ? "ok" : "info"}`, role: n.kind === "error" ? "alert" : null }, document.createTextNode(n.text));
       if (n.action) p.append(document.createElement("br"), el("button", { type: "button", text: n.action.label, onclick: n.action.run }));
+      if (n.detail) p.append(el("small", { class: "v-tech", text: `Details: ${n.detail}` }));
       return p;
     })
   );
@@ -737,9 +785,15 @@ function setProgress(label, fraction) {
 function uploadMessage(e) {
   switch (e.code) {
     case "network":
+      if (e.storageAllows) return "Lost the connection while sending. The storage does accept this website, so the problem is your signal (or the phone). Switch between Wi-Fi and mobile data, turn off any VPN or ad-blocker, then tap Try again. What was already sent is kept.";
+      if (e.unreachable) return "This phone can't reach the storage right now. Check your signal, switch between Wi-Fi and mobile data, turn off any VPN or ad-blocker, then tap Try again. What was already sent is kept.";
       return "Lost the connection. What was already sent is kept. Tap Try again when your signal is back.";
     case "blocked":
-      return "The storage isn't letting this phone send videos to it yet. That's the one-time “upload permission” step. Tap “Open the setup” and follow step 2, then come back here and tap Try again: your video is kept, nothing to redo. (If you already did that step, check your signal and tap Try again.)";
+      return `${e.message} That's the one-time “upload permission” step: tap “Open the setup”, follow step 2, then come back here and tap Try again. Your video is kept, nothing to redo.`;
+    case "wrong_address":
+      return e.message;
+    case "file_unreadable":
+      return "This phone couldn't read the video file any more (it may have been moved or deleted, or the app lost access to it). Tap Remove, then pick the video again.";
     case "stalled":
       return "The connection stopped moving. What was already sent is kept. Tap Try again.";
     case "link_rejected":
@@ -762,6 +816,13 @@ function explain(e) {
   if (engine) return engine.describeError(e).message;
   return "Something went wrong. Try again.";
 }
+// The short "what exactly happened" line shown under a message (so a screenshot is enough to see the cause).
+function explainDetail(e) {
+  if (e instanceof UploadError) return e.detail || (e.status ? `${e.code} (${e.status})` : e.code || "");
+  if (e && e.code === "engine_load") return "the video tools didn't download";
+  if (engine) return engine.describeError(e).detail || "";
+  return "";
+}
 
 // ----- step 1: make it smaller -----
 async function doShrink(allowNoAudio = false) {
@@ -774,7 +835,7 @@ async function doShrink(allowNoAudio = false) {
   renderJob();
   setProgress("Starting…", 0);
   const release = engine.keepScreenOn();
-  const t0 = performance.now();
+  let t0 = performance.now();
   try {
     const result = await engine.shrink(j.file, j.info, j.plan, {
       signal: j.abort.signal,
@@ -783,6 +844,14 @@ async function doShrink(allowNoAudio = false) {
         if (job !== j) return;
         const left = f > 0.04 ? (((performance.now() - t0) / f) * (1 - f)) / 1000 : null;
         setProgress(`Making it smaller… ${Math.round(f * 100)}%${left != null ? ` · ${formatLeft(left)}` : ""}`, f);
+      },
+      onRetry: () => {
+        // this phone's encoder gave up on the first format: the engine starts again with the next one
+        if (job !== j) return;
+        t0 = performance.now();
+        j.workHeadline = "Trying another way…";
+        renderJob();
+        setProgress("Trying another way…", 0);
       },
     });
     if (job !== j) return;
@@ -802,7 +871,7 @@ async function doShrink(allowNoAudio = false) {
         j.error = { text: "This browser can't keep this video's sound.", action: { label: "Make it without sound", run: () => doShrink(true) } };
       } else {
         console.error("Shrinking failed:", error);
-        j.error = { text: explain(error) };
+        j.error = { text: explain(error), detail: explainDetail(error) };
       }
     }
     renderJob();
@@ -839,7 +908,7 @@ async function prepareAsIs() {
     console.error("Preparing failed:", error);
     dropShrunk(j);
     j.stage = "ready";
-    j.error = { text: explain(error) };
+    j.error = { text: explain(error), detail: explainDetail(error) };
     renderJob();
   } finally {
     j.abort = null;
@@ -1016,6 +1085,10 @@ async function doUpload() {
     titleInput.scrollIntoView({ block: "center", behavior: "smooth" });
     return;
   }
+  if (j.previewBroken && !j.shrunk.asIs && !j.uploaded && !j.brokenOk) {
+    if (!window.confirm("The smaller copy didn't play in this browser, so it may be damaged. Post it anyway?")) return;
+    j.brokenOk = true;
+  }
   j.error = null;
   preview.pause();
   const release = engine.keepScreenOn();
@@ -1082,7 +1155,10 @@ function handleUploadError(j, error) {
     j.session = null; // that upload can't be carried on: the next try starts a fresh one
     abortUpload(getToken, s);
   }
-  j.error = { text: wasSaving ? `The video is uploaded, but saving it to the list failed: ${friendlyError(error)}` : explain(error) };
+  j.error = {
+    text: wasSaving ? `The video is uploaded, but saving it to the list failed: ${friendlyError(error)}` : explain(error),
+    detail: wasSaving ? (error && error.code ? `Firebase said: ${error.code}` : "") : explainDetail(error),
+  };
   if (!wasSaving && error instanceof UploadError && error.code === "blocked") j.error.action = { label: "Open the setup", run: openSetup };
   renderJob();
 }
@@ -1427,6 +1503,8 @@ const setupBtn = $("setup-btn");
 const setupResult = $("setup-result");
 
 function stepRow(step) {
+  // a "note" row is a small grey line under the step it explains (the technical details, for a screenshot)
+  if (step.note) return el("li", { class: "is-note" }, el("span", { text: step.text }));
   return el("li", { class: step.ok ? "is-ok" : "is-bad" }, icon(step.ok ? "check" : "alert", 16), el("span", { text: step.text }));
 }
 testBtn.addEventListener("click", async () => {
@@ -1443,7 +1521,8 @@ testBtn.addEventListener("click", async () => {
     });
     if (first) testSteps.replaceChildren();
     if (steps.some((s) => s.id === "upload" && s.ok)) rememberStorageWorks();
-    if (steps.length && steps.every((s) => s.ok) && steps[steps.length - 1].id === "cleanup") toast("Video storage works.");
+    const real = steps.filter((s) => !s.note);
+    if (real.length && real.every((s) => s.ok) && real[real.length - 1].id === "cleanup") toast("Video storage works.");
   } catch (error) {
     console.error("Storage test crashed:", error);
     testSteps.replaceChildren(stepRow({ ok: false, text: error.message || "The test stopped unexpectedly." }));
@@ -1453,28 +1532,90 @@ testBtn.addEventListener("click", async () => {
   }
 });
 
-function showSetup(text, kind) {
-  setupResult.hidden = false;
-  setupResult.className = `form-message${kind ? ` ${kind}` : ""}`;
-  setupResult.textContent = text;
+// What the one-time setup did, one plain line each. The server returns only yes/no facts and counts here, never a key.
+function setupLines(r) {
+  const lines = [];
+  const add = (tone, text) => lines.push({ tone, text });
+  const from = (r.origins || []).join(" and ") || "this website";
+  if (r.corsSaved) {
+    add("ok", r.corsChanged ? `Done: ${from} is now allowed to send videos to your storage.` : `Already in place: ${from} was already allowed to send videos, so nothing needed changing.`);
+  } else {
+    add("bad", "Backblaze answered, but the upload permission didn't save. Look at the bucket's CORS rules in Backblaze, then try again.");
+  }
+  if (r.corsSaved && r.otherCorsRules > 0) {
+    add(r.othersKept ? "ok" : "warn", r.othersKept ? `Your ${r.otherCorsRules} other permission rule${r.otherCorsRules === 1 ? "" : "s"} in Backblaze ${r.otherCorsRules === 1 ? "was" : "were"} left exactly as ${r.otherCorsRules === 1 ? "it was" : "they were"}.` : "Some of the bucket's other permission rules changed while this ran. Have a look at them in Backblaze.");
+  }
+  if (r.lifecycleRisk) {
+    add("warn", "This bucket has a cleanup rule that hides files some days after they were uploaded. Videos would disappear one day. This page doesn't change it: in Backblaze, open the bucket, go to Lifecycle Settings and remove that rule.");
+  }
+  if (r.bucketType && r.bucketType !== "allPrivate") {
+    add("warn", "This bucket is not private. In Backblaze, set the bucket to Private. Videos are served through short-lived links and don't need a public bucket.");
+  } else if (r.bucketType) {
+    add("ok", "The bucket is still private.");
+  }
+  if (r.endpointMatches === false) {
+    add("warn", `STORAGE_ENDPOINT in Vercel doesn't match this bucket's address (${r.s3Host}). Fix it there and redeploy.`);
+  }
+  const checks = Array.isArray(r.checks) ? r.checks : [];
+  if (r.corsSaved && checks.length) {
+    const refused = checks.filter((c) => c.ok === false);
+    if (refused.length) add("warn", `Saved, but when asked directly the storage still refuses uploads from ${refused.map((c) => c.origin).join(" and ")} (it answered ${refused[0].status}). Wait a minute, then run “Test storage”. If it keeps saying no, check the CORS rules in Backblaze.`);
+    else if (checks.every((c) => c.ok === true)) add("ok", "Checked from the server: the storage itself agrees to accept uploads from this website.");
+    else add("info", "Couldn't double-check with the storage just now. Run “Test storage” to be sure.");
+  }
+  return lines;
 }
+
+function renderSetupResult(r) {
+  const lines = setupLines(r);
+  const list = el("ul", { class: "v-steps" });
+  for (const line of lines) {
+    const ok = line.tone === "ok";
+    const mark = line.tone === "ok" ? "check" : line.tone === "info" ? "info" : "alert";
+    list.append(el("li", { class: ok ? "is-ok" : line.tone === "bad" ? "is-bad" : line.tone === "warn" ? "is-warn" : "is-info" }, icon(mark, 16), el("span", { text: line.text })));
+  }
+  const parts = [list];
+  if (r.corsSaved) {
+    parts.push(
+      el(
+        "div",
+        { class: "v-keywarn", role: "alert" },
+        el("strong", { text: "Now clean up (this matters):" }),
+        el(
+          "ol",
+          { class: "v-howto" },
+          el("li", { text: "In Vercel → Settings → Environment Variables, delete B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY." }),
+          el("li", { text: "Redeploy the Production site (Deployments → ⋯ → Redeploy)." }),
+          el("li", { text: "In Backblaze → Application Keys, tap “Generate New Master Application Key”. That cancels the temporary one. Your upload keys (STORAGE_KEY_ID and STORAGE_APP_KEY) keep working." }),
+          el("li", { text: "Come back here and run “Test storage” (step 1)." })
+        )
+      )
+    );
+    if (job && job.retry) parts.push(el("p", { class: "v-hint", text: "Your video is still waiting: scroll up and tap “Try again”." }));
+  }
+  setupResult.hidden = false;
+  setupResult.className = `v-setup-result${r.corsSaved ? " is-success" : " is-error"}`;
+  setupResult.replaceChildren(...parts);
+}
+
+function showSetupMessage(text, kind) {
+  setupResult.hidden = false;
+  setupResult.className = `v-setup-result${kind ? ` is-${kind}` : ""}`;
+  setupResult.replaceChildren(el("p", { text }));
+}
+
 setupBtn.addEventListener("click", async () => {
   setupBtn.disabled = true;
-  showSetup("Configuring the bucket's browser-upload permission using server-side credentials…", "");
+  showSetupMessage("Setting the upload permission, using the temporary key stored in Vercel…", "");
   try {
-    // Never include high-privilege Backblaze credentials in a browser request.
+    // Never include high-privilege Backblaze credentials in a browser request: the server reads them from Vercel.
     const r = await apiPost(getToken, { action: "setup" });
-    const lines = [];
-    lines.push(r.corsSaved ? "Uploads from this website are now allowed." : "Backblaze answered, but the upload permission didn't save. Check the bucket and try again.");
-    if (r.bucketType && r.bucketType !== "allPrivate") lines.push("Warning: this bucket is not private. Make it private in Backblaze.");
-    if (r.endpointMatches === false) lines.push(`Warning: STORAGE_ENDPOINT in Vercel doesn't match this bucket's address (${r.s3Host}). Fix it and redeploy.`);
-    if (r.corsSaved) lines.push("SECURITY CLEANUP: remove B2_SETUP_MASTER_KEY_ID and B2_SETUP_MASTER_KEY from Vercel, redeploy Production, then generate a new master key in Backblaze to invalidate the temporary key. Finally run “Test storage” above.");
-    if (r.corsSaved && job && job.retry) lines.push("Your video is still waiting: scroll up and tap “Try again”.");
-    showSetup(lines.join(" "), r.corsSaved ? "success" : "error");
+    renderSetupResult(r);
   } catch (error) {
-    showSetup(error.message || "That didn't work. Try again.", "error");
+    showSetupMessage(error.message || "That didn't work. Try again.", "error");
   } finally {
     setupBtn.disabled = false;
+    loadStatus(); // refreshes the warning about a leftover setup key
   }
 });
 
