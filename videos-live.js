@@ -133,6 +133,21 @@ function isPortrait(item) {
 }
 
 // ---------- the cards ----------
+// When a card comes near the screen, fetch its play link in the background (a tiny request, not the video).
+const cardObserver =
+  typeof IntersectionObserver === "function"
+    ? new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            cardObserver.unobserve(entry.target);
+            if (typeof entry.target._warm === "function") entry.target._warm();
+          });
+        },
+        { rootMargin: "200px" }
+      )
+    : null;
+
 function buildCard(item) {
   const card = el("article", "vid-item");
   card.dataset.category = item.category;
@@ -154,6 +169,11 @@ function buildCard(item) {
   media.appendChild(badge);
   if (item.dur) media.appendChild(el("span", "vid-dur", clock(item.dur)));
   media.addEventListener("click", () => openViewer(item));
+  const warm = () => prefetchLink(item.key);
+  media.addEventListener("pointerdown", warm, { passive: true });
+  media.addEventListener("mouseenter", warm, { passive: true });
+  media.addEventListener("focus", warm);
+  if (cardObserver) cardObserver.observe(media), (media._warm = warm);
 
   const body = el("div", "vid-body");
   const label = el("div", "vid-label");
@@ -253,7 +273,62 @@ async function loadPage() {
 let current = null; // the video being shown: { item, token, retried, played, abort }
 let openToken = 0;
 
-async function getPlayLink(key, signal) {
+// Play links are asked for ahead of the tap (when a card scrolls into view, is touched or hovered), so
+// that by the time someone presses play the link is already here. A link stays valid for hours; we keep
+// it for 20 minutes only, to be safe.
+const LINK_TTL_MS = 20 * 60 * 1000;
+const linkCache = new Map(); // key -> { url, at } | { promise }
+let preconnected = false;
+
+function preconnect(url) {
+  if (preconnected) return;
+  try {
+    const origin = new URL(url).origin;
+    for (const rel of ["preconnect", "dns-prefetch"]) {
+      const link = document.createElement("link");
+      link.rel = rel;
+      link.href = origin;
+      document.head.appendChild(link);
+    }
+    preconnected = true;
+  } catch (e) {
+    /* a hint only */
+  }
+}
+
+function peekLink(key) {
+  const hit = linkCache.get(key);
+  return hit && hit.url && Date.now() - hit.at < LINK_TTL_MS ? hit.url : null;
+}
+
+function prefetchLink(key) {
+  if (peekLink(key) || (linkCache.get(key) && linkCache.get(key).promise)) return;
+  const promise = fetchPlayLink(key)
+    .then((url) => {
+      linkCache.set(key, { url, at: Date.now() });
+      preconnect(url);
+    })
+    .catch(() => linkCache.delete(key)); // a failed warm-up is silent; pressing play will ask again
+  linkCache.set(key, { promise });
+}
+
+async function getPlayLink(key, signal, fresh) {
+  if (fresh) linkCache.delete(key);
+  const ready = peekLink(key);
+  if (ready) return ready;
+  const pending = linkCache.get(key);
+  if (pending && pending.promise) {
+    await pending.promise;
+    const after = peekLink(key);
+    if (after) return after;
+  }
+  const url = await fetchPlayLink(key, signal);
+  linkCache.set(key, { url, at: Date.now() });
+  preconnect(url);
+  return url;
+}
+
+async function fetchPlayLink(key, signal) {
   const res = await fetch(`/api/videos?action=play&key=${encodeURIComponent(key)}`, {
     signal,
     cache: "no-store",
@@ -273,7 +348,7 @@ async function getPlayLink(key, signal) {
   return body.url;
 }
 
-function setStatus(kind) {
+function setStatus(kind, message) {
   if (!kind) {
     statusEl.hidden = true;
     return;
@@ -281,7 +356,11 @@ function setStatus(kind) {
   const failed = kind === "error";
   statusEl.hidden = false;
   statusEl.dataset.kind = kind;
-  statusText.textContent = failed ? "This video couldn't load. Check your connection and try again." : "Loading video…";
+  statusText.textContent = failed
+    ? message || "This video couldn't load. Please try again."
+    : kind === "buffering"
+      ? "Buffering…"
+      : "Loading video…";
   retryBtn.hidden = !failed;
 }
 
@@ -293,7 +372,7 @@ function track(item) {
   }
 }
 
-async function startPlayback(resumeAt) {
+async function startPlayback(resumeAt, fresh) {
   const cur = current;
   if (!cur) return;
   const token = cur.token;
@@ -302,7 +381,7 @@ async function startPlayback(resumeAt) {
   setStatus("loading");
   let url;
   try {
-    url = await getPlayLink(cur.item.key, cur.abort ? cur.abort.signal : undefined);
+    url = await getPlayLink(cur.item.key, cur.abort ? cur.abort.signal : undefined, fresh);
   } catch (error) {
     if (!current || current.token !== token) return; // closed or replaced while waiting
     if (error && error.name === "AbortError") return;
@@ -324,6 +403,7 @@ async function startPlayback(resumeAt) {
       { once: true }
     );
   }
+  player.preload = "auto"; // start fetching the picture immediately; the user already asked to watch
   player.src = url;
   const started = player.play();
   if (started && typeof started.catch === "function") started.catch(() => {}); // blocked autoplay: the play button on the controls still works
@@ -391,7 +471,7 @@ function wireViewer() {
   retryBtn.addEventListener("click", () => {
     if (!current) return;
     current.retried = 0;
-    startPlayback(player.currentTime || 0);
+    startPlayback(player.currentTime || 0, true);
   });
   player.addEventListener("loadeddata", () => {
     if (current) setStatus(null);
@@ -407,12 +487,26 @@ function wireViewer() {
   player.addEventListener("error", () => {
     const cur = current;
     if (!cur || !player.getAttribute("src")) return; // not a real failure: the viewer is just being emptied
-    if (cur.retried < 1) {
-      cur.retried += 1; // an expired or dropped link: ask for a fresh one once, and carry on from the same spot
-      startPlayback(player.currentTime || 0);
+    const code = player.error ? player.error.code : 0;
+    if (code === 4 && cur.item.key.endsWith(".webm")) {
+      // MEDIA_ERR_SRC_NOT_SUPPORTED on a WebM file: this phone/browser (older iPhones) can't play WebM.
+      // Retrying won't help and it is not a connection problem, so say what it really is.
+      setStatus("error", "This video format isn't supported on this device. Please try another browser or device.");
       return;
     }
-    setStatus("error");
+    if (cur.retried < 2) {
+      cur.retried += 1; // an expired or dropped link: ask for a fresh one, and carry on from the same spot
+      startPlayback(player.currentTime || 0, true);
+      return;
+    }
+    setStatus("error", "This video couldn't load. Check your connection and tap Try again.");
+  });
+  // Slow network: show a spinner while the picture waits for data instead of looking frozen.
+  player.addEventListener("waiting", () => {
+    if (current && player.getAttribute("src")) setStatus("buffering");
+  });
+  player.addEventListener("canplay", () => {
+    if (current) setStatus(null);
   });
 }
 

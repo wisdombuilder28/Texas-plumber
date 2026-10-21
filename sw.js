@@ -1,5 +1,5 @@
 /* N.D. Flow Plumbing Co. — service worker */
-const VERSION = "ndflow-v18";
+const VERSION = "ndflow-v19";
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -68,6 +68,19 @@ self.addEventListener("fetch", (event) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
   if (isBypassed(url)) return;
 
+  // Videos/audio, partial (Range) requests and the video storage host are NEVER handled here.
+  // A video is fetched in pieces (HTTP 206) from another website; a service worker cannot cache
+  // those, and answering them through it made the player fail with "no strong connection" on
+  // visitors' phones. Returning without respondWith lets the browser stream it directly.
+  if (
+    req.destination === "video" ||
+    req.destination === "audio" ||
+    req.headers.has("range") ||
+    /backblazeb2\.com$|amazonaws\.com$|r2\.cloudflarestorage\.com$/.test(url.hostname)
+  ) {
+    return;
+  }
+
   if (req.mode === "navigate") {
     event.respondWith(
       (async () => {
@@ -122,7 +135,7 @@ self.addEventListener("fetch", (event) => {
             }
             return res;
           })
-          .catch(() => cached);
+          .catch(() => cached || Response.error());
         return cached || network;
       })(),
     );
@@ -135,13 +148,18 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(req);
         const network = fetch(req)
           .then(async (res) => {
-            if (res && (res.ok || res.type === "opaque")) {
-              const cache = await caches.open(RUNTIME);
-              cache.put(req, res.clone());
+            // Only complete (200) answers can be stored; storing is best-effort and must never break the response.
+            if (res && (res.status === 200 || res.type === "opaque")) {
+              try {
+                const cache = await caches.open(RUNTIME);
+                await cache.put(req, res.clone());
+              } catch (e) {
+                /* ignore */
+              }
             }
             return res;
           })
-          .catch(() => cached);
+          .catch(() => cached || Response.error());
         return cached || network;
       })(),
     );
