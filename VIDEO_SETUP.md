@@ -169,6 +169,23 @@ If you upload a video **as it is** (the option under “Picture size and quality
 
 ---
 
+## 10. If a visitor says a video won't play
+
+The grey box on the video now says what went wrong, and ends with a small code like `(error 4)`. Ask the visitor to read you the message or send a screenshot, and ask which phone and browser they use.
+
+| What it says | What it means | What to do |
+|---|---|---|
+| *“Your device couldn't reach the video server…”* | Their phone or computer can't connect to the storage: weak or blocked network, private DNS, VPN, data saver, ad-blocker | Switch Wi-Fi ↔ mobile data, turn off VPN / private DNS / ad-blocker, tap **Try again** |
+| *“The connection dropped while the video was loading…”* | The signal dropped part-way | Tap **Try again** |
+| *“This video couldn't be played right now…”* | The storage answered, but the phone couldn't play the video (a format that phone can't play), or Backblaze is refusing downloads | Open the page in Chrome. Check Backblaze **Caps & Alerts**: if the daily download limit was reached, downloads stop until it resets. If only one phone fails, write down the phone model, the browser and the code |
+| *“This video couldn't load. Please tap Try again.”* | Our own server didn't hand out the video link | Tap **Try again**. If it keeps happening, look at Vercel → **Logs** for `/api/videos` |
+
+The page tries up to three links by itself before it shows a message, so a message means it really did fail more than once.
+
+A phone that visited before gets the newest version of the site on its next visit: open the site, wait a few seconds, then reload once before testing again. The site's offline helper (`sw.js`) never touches videos: they stream straight from the storage.
+
+---
+
 ## Good to know
 
 - **Space.** Backblaze gives 10 GB free. The page stops accepting uploads at 9 GB so it never hits the wall. On the normal setting (720p, Balanced) a video takes about 16 MB per minute: roughly 80 MB for 5 minutes, 160 MB for 10 minutes. Choosing **Smaller** quality stretches it by about a third. When it gets close, delete old videos on the Videos page (it really frees the space).

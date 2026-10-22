@@ -4,6 +4,9 @@
 // The list comes from the `videos` collection in Firestore (written by the admin Videos page).
 // The video files themselves sit in a private storage bucket, so this page never holds a permanent
 // address for one: pressing play asks /api/videos for a link that works for a few hours, then plays it.
+// The link is asked for a moment ahead (when a card comes into view or is touched), so play starts at once.
+// If a video won't play, the page says why as far as it can tell (no connection to the video server, or the
+// device couldn't play it) instead of always blaming the connection.
 //
 // Each card shows only the small cover picture saved with the video, so the page costs almost nothing
 // until somebody presses play. Videos load six at a time; "Show more videos" fetches the next six.
@@ -357,7 +360,7 @@ function setStatus(kind, message) {
   statusEl.hidden = false;
   statusEl.dataset.kind = kind;
   statusText.textContent = failed
-    ? message || "This video couldn't load. Please try again."
+    ? message || "This video couldn't load. Please tap Try again."
     : kind === "buffering"
       ? "Buffering…"
       : "Loading video…";
@@ -372,10 +375,53 @@ function track(item) {
   }
 }
 
+// ---------- when a video won't play ----------
+const AUTO_RETRIES = 2; // fresh links tried automatically before saying so
+const PROBE_MS = 5000; //   how long to wait for the video server when finding out why
+
+// Can this phone reach the video server at all? ANY answer counts, even "not allowed": the point is only to tell
+// "no connection to the server" apart from "the server answered but the video still wouldn't play".
+async function canReachVideoServer(url) {
+  if (!url) return null;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  if (typeof AbortController !== "function") return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_MS);
+  try {
+    await fetch(url, { method: "HEAD", mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+    return true;
+  } catch (e) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// What to tell the visitor. `code` is the browser's own reason (1-4, 0 if unknown); `reachable` is true / false / null (couldn't tell).
+function failureMessage(code, reachable, key) {
+  const tail = code ? ` (error ${code})` : "";
+  if (reachable === false) return `Your device couldn't reach the video server. Check your connection and tap Try again.${tail}`;
+  if (code === 2) return `The connection dropped while the video was loading. Tap Try again.${tail}`;
+  if (code === 3 || code === 4) {
+    const old = /\.webm$/i.test(key || "") ? " Some older iPhones can't play this type of video." : "";
+    return `This video couldn't be played right now.${old} Tap Try again, or open this page in another browser.${tail}`;
+  }
+  return `This video couldn't load. Please tap Try again.${tail}`;
+}
+
+async function giveUp(cur, code) {
+  const token = cur.token;
+  cur.failing = true; // one explanation per failure, even if the browser reports it twice
+  const reachable = await canReachVideoServer(player.getAttribute("src"));
+  if (!current || current.token !== token) return; // closed or replaced while finding out
+  setStatus("error", failureMessage(code, reachable, cur.item.key));
+}
+
 async function startPlayback(resumeAt, fresh) {
   const cur = current;
   if (!cur) return;
   const token = cur.token;
+  cur.failing = false;
   if (cur.abort) cur.abort.abort();
   cur.abort = typeof AbortController === "function" ? new AbortController() : null;
   setStatus("loading");
@@ -406,13 +452,19 @@ async function startPlayback(resumeAt, fresh) {
   player.preload = "auto"; // start fetching the picture immediately; the user already asked to watch
   player.src = url;
   const started = player.play();
-  if (started && typeof started.catch === "function") started.catch(() => {}); // blocked autoplay: the play button on the controls still works
+  if (started && typeof started.catch === "function") {
+    started.catch((e) => {
+      // Blocked autoplay (some phones only start a video from the tap itself): nothing is wrong, so don't leave the
+      // loading spinner over a paused video. The play button on the controls starts it.
+      if (current && current.token === token && e && e.name === "NotAllowedError") setStatus(null);
+    });
+  }
 }
 
 function openViewer(item) {
   const token = ++openToken;
   if (current && current.abort) current.abort.abort();
-  current = { item, token, retried: 0, played: false, abort: null };
+  current = { item, token, retried: 0, played: false, failing: false, abort: null };
 
   vMeta.textContent = [CARD_LABEL[item.category], item.date].filter(Boolean).join(" · ");
   vTitle.textContent = item.title;
@@ -486,20 +538,17 @@ function wireViewer() {
   });
   player.addEventListener("error", () => {
     const cur = current;
-    if (!cur || !player.getAttribute("src")) return; // not a real failure: the viewer is just being emptied
+    if (!cur || cur.failing || !player.getAttribute("src")) return; // not a real failure: the viewer is just being emptied
     const code = player.error ? player.error.code : 0;
-    if (code === 4 && cur.item.key.endsWith(".webm")) {
-      // MEDIA_ERR_SRC_NOT_SUPPORTED on a WebM file: this phone/browser (older iPhones) can't play WebM.
-      // Retrying won't help and it is not a connection problem, so say what it really is.
-      setStatus("error", "This video format isn't supported on this device. Please try another browser or device.");
-      return;
-    }
-    if (cur.retried < 2) {
-      cur.retried += 1; // an expired or dropped link: ask for a fresh one, and carry on from the same spot
+    // The browser's reason is vague: a refused or expired link is reported the same way as a format it can't play
+    // (code 4), so a fresh link is always tried first, and the page only explains once that has failed too.
+    console.warn("A video could not be played:", code, player.error && player.error.message);
+    if (cur.retried < AUTO_RETRIES) {
+      cur.retried += 1; // an expired, refused or dropped link: ask for a fresh one, and carry on from the same spot
       startPlayback(player.currentTime || 0, true);
       return;
     }
-    setStatus("error", "This video couldn't load. Check your connection and tap Try again.");
+    giveUp(cur, code);
   });
   // Slow network: show a spinner while the picture waits for data instead of looking frozen.
   player.addEventListener("waiting", () => {
