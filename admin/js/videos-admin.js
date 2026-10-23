@@ -297,30 +297,12 @@ async function loadStatus() {
   }
 }
 
+// The "Storage setup & test" box is kept out of sight (it is for whoever built the site). Whatever needs it calls
+// this: the buttons in the storage box, "Open the setup" on a blocked upload, and an address ending in ?setup=1.
 function openSetup() {
+  setupBox.hidden = false;
   setupBox.open = true;
   setupBox.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-// Has this phone already shown it can send files to the storage? Only used to show a first-time hint.
-const WORKS_FLAG = "ndflow-video-storage-works";
-function storageWorksHere() {
-  try {
-    return localStorage.getItem(WORKS_FLAG) === "1";
-  } catch {
-    return false;
-  }
-}
-function rememberStorageWorks() {
-  try {
-    localStorage.setItem(WORKS_FLAG, "1");
-  } catch {
-    /* private window: the hint just shows again */
-  }
-}
-function runTestNow() {
-  openSetup();
-  testBtn.click();
 }
 
 // Notes that belong under the storage box whatever state it is in: opened from the wrong address, and the
@@ -406,12 +388,6 @@ function renderStorage() {
   if (flags.length) {
     storageBox.classList.add("is-warn");
     parts.push(...flags);
-  }
-  if (!storageWorksHere()) {
-    parts.push(
-      el("p", { class: "v-meter-note", text: "First video on this phone? Run the quick test first. It takes a few seconds and shows if anything is still missing." }),
-      el("div", { class: "v-storage-actions" }, el("button", { type: "button", class: "btn-ghost-dark", text: "Run the test", onclick: runTestNow }))
-    );
   }
   storageBox.replaceChildren(...parts);
 }
@@ -1119,7 +1095,6 @@ async function doUpload() {
       });
       j.uploaded = { key: result.key, bytes: Number.isInteger(result.bytes) ? result.bytes : j.shrunk.bytes };
       j.session = null;
-      rememberStorageWorks();
     }
     if (job !== j) return;
     j.stage = "saving";
@@ -1520,7 +1495,6 @@ testBtn.addEventListener("click", async () => {
       testSteps.append(stepRow(step));
     });
     if (first) testSteps.replaceChildren();
-    if (steps.some((s) => s.id === "upload" && s.ok)) rememberStorageWorks();
     const real = steps.filter((s) => !s.note);
     if (real.length && real.every((s) => s.ok) && real[real.length - 1].id === "cleanup") toast("Video storage works.");
   } catch (error) {
@@ -1620,6 +1594,8 @@ setupBtn.addEventListener("click", async () => {
 });
 
 // ---------- Start ----------
+// …/admin/videos.html?setup=1 shows the "Storage setup & test" box for whoever built the site; otherwise it stays hidden.
+if (/[?&]setup(?:=|&|$)/.test(location.search)) setupBox.hidden = false;
 updatePick();
 renderStorage();
 requireAuth((user) => {

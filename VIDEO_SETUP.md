@@ -82,11 +82,13 @@ Firebase console → Firestore Database → **Rules** → replace everything wit
 
 ## 5. Test it
 
-1. Open `https://nd-flow-plumbing.vercel.app/admin` → **Videos**.
-2. Scroll to **Storage setup & test** (tap it) → **Test storage**.
+1. Open `https://nd-flow-plumbing.vercel.app/admin/videos.html?setup=1`. The `?setup=1` on the end is what shows the test (see the note below).
+2. Scroll to the bottom, tap **Storage setup & test** → **Test storage**.
 3. Five green ticks = ready. Under a red line there is a grey **Details** line: screenshot it if you ever need help.
 
 If the second-to-last line says the storage **hasn't been given permission to take uploads**, do step 6.
+
+The **Storage setup & test** box is hidden on purpose, so the person adding videos never sees it. It shows only with `?setup=1` on the end of the address, or by itself when something is wrong (the **Open storage setup** and **Show me how** buttons, and **Open the setup** on a blocked upload, all open it).
 
 ---
 
@@ -99,7 +101,7 @@ it sits in two private Vercel settings, only the server reads it, and you remove
 1. Backblaze → **Application Keys** → **Generate New Master Application Key**. Copy the Key ID and the Application Key (shown once).
 2. Vercel → **Settings → Environment Variables** → add `B2_SETUP_MASTER_KEY_ID` and `B2_SETUP_MASTER_KEY`. **Production only, Secret on.**
 3. **Redeploy.**
-4. Open `https://nd-flow-plumbing.vercel.app/admin/videos.html` → **Storage setup & test** → **Configure upload permissions**.
+4. Open `https://nd-flow-plumbing.vercel.app/admin/videos.html?setup=1` → **Storage setup & test** → **Configure upload permissions**.
 5. It reports what it did, line by line: the rule for `https://nd-flow-plumbing.vercel.app` is saved; your other rules were kept; the bucket is still private; the storage itself confirms it accepts uploads.
 6. **Right away:** delete both `B2_SETUP_…` settings in Vercel → **Redeploy** → in Backblaze tap **Generate New Master Application Key** again. That cancels the temporary key. (`STORAGE_KEY_ID` and `STORAGE_APP_KEY` are not affected.)
 7. **Test storage** again.
