@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
 <link rel="stylesheet" href="styles.css?v=17" />
-<link rel="stylesheet" href="work-videos.css?v=1" />
+<link rel="stylesheet" href="work-videos.css?v=2" />
 
 <!-- Google Analytics (GA4) -->
 <script>(function(){try{var h=location.hostname;if(h==="localhost"||h==="127.0.0.1"||/\.local$/.test(h)||(/\.vercel\.app$/.test(h)&&h!=="nd-flow-plumbing.vercel.app")||localStorage.getItem("nd_internal"))window["ga-disable-G-9LBTZMCXGV"]=true}catch(e){}})()</script>
@@ -141,23 +141,33 @@
 
 </main>
 
+<!-- Full-screen video player. The slides (one per video, swiped left/right) are built by videos-live.js. -->
 <dialog id="vid-viewer" class="vid-viewer" aria-label="Video player">
-  <button type="button" id="vid-close" class="vid-close" aria-label="Close video"><i data-lucide="x" class="icon"></i></button>
-  <div class="vid-stage">
-    <div class="vid-box">
-      <span class="vid-ratio" aria-hidden="true"></span>
-      <video id="vid-player" class="vid-player" controls playsinline preload="metadata"></video>
-      <div id="vid-status" class="vid-status" hidden>
-        <span class="vid-spin" aria-hidden="true"></span>
-        <p id="vid-status-text" role="status"></p>
-        <button type="button" id="vid-retry" class="btn-accent" hidden>Try again</button>
-      </div>
-    </div>
+  <div id="vid-track" class="vid-track" tabindex="-1" autofocus aria-live="off"></div>
+
+  <div class="vid-top">
+    <span id="vid-count" class="vid-count" aria-live="polite"></span>
+    <button type="button" id="vid-close" class="vid-close" aria-label="Close video">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
   </div>
-  <div class="vid-info">
-    <p class="vid-info-label" id="vid-meta"></p>
-    <h3 id="vid-title"></h3>
-    <p class="vid-full-caption" id="vid-caption" hidden></p>
+
+  <button type="button" id="vid-prev" class="vid-nav vid-nav-prev" aria-label="Previous video">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>
+  </button>
+  <button type="button" id="vid-next" class="vid-nav vid-nav-next" aria-label="Next video">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg>
+  </button>
+
+  <div class="vid-controls">
+    <span id="vid-time" class="vid-time">0:00</span>
+    <input id="vid-seek" class="vid-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek" disabled />
+    <span id="vid-total" class="vid-time">0:00</span>
+    <button type="button" id="vid-speed" class="vid-ctl-btn vid-speed" aria-label="Playback speed">1.0x</button>
+    <button type="button" id="vid-mute" class="vid-ctl-btn vid-mute" aria-label="Mute" data-muted="0">
+      <svg class="vid-ico-on" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      <svg class="vid-ico-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>
+    </button>
   </div>
 </dialog>
 

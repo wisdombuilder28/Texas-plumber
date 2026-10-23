@@ -5,11 +5,17 @@
 // The video files themselves sit in a private storage bucket, so this page never holds a permanent
 // address for one: pressing play asks /api/videos for a link that works for a few hours, then plays it.
 // The link is asked for a moment ahead (when a card comes into view or is touched), so play starts at once.
+//
+// Tapping a card opens a FULL-SCREEN player. The videos of the current list are slides in one row: swipe left or
+// right (or use the arrow keys / the arrows on a computer) to play the one next to it. Only the video on screen and
+// its two neighbours ever hold a video element; the next one is warmed up once the current one is playing smoothly,
+// so a swipe starts playing straight away without the two videos fighting over a slow connection.
 // If a video won't play, the page says why as far as it can tell (no connection to the video server, or the
 // device couldn't play it) instead of always blaming the connection.
 //
 // Each card shows only the small cover picture saved with the video, so the page costs almost nothing
-// until somebody presses play. Videos load six at a time; "Show more videos" fetches the next six.
+// until somebody presses play. Videos load six at a time; "Show more videos" fetches the next six (and the
+// player fetches them by itself when you swipe near the end).
 //
 // Everything on screen is built with createElement / textContent, so a title or description is never
 // read as HTML. If the list can't be loaded (offline, rules not published yet) or is empty, the whole
@@ -32,6 +38,12 @@ const MAX_CAPTION = 300;
 const MAX_POSTER_CHARS = 140000; // the same ceiling as the admin page and firestore.rules
 const DATA_IMAGE = /^data:image\/(jpe?g|png|webp|gif|avif);base64,/i;
 const VIDEO_KEY = /^videos\/[A-Za-z0-9_-]{8,64}\.(mp4|webm)$/;
+const CAPTION_PREVIEW = 100; //   characters of the description shown over the video before "Read more"
+const SPEEDS = [1, 1.5, 2];
+const SETTLE_MS = 90; //          how long the swipe row must be still before the new video starts
+const SPINNER_DELAY_MS = 450; //  the spinner only shows if a video still isn't moving after this long
+const SLOW_HINT_MS = 7000; //     ...and says "slow connection" only after this long
+const WARM_NEXT_AHEAD_S = 15; //  seconds buffered ahead of the playing video before the next one is warmed up
 
 // KEEP IN SYNC with admin/js/videos-admin.js (CATEGORIES) and firestore.rules.
 const CATEGORIES = ["showcase", "before-after", "testimonial"];
@@ -45,14 +57,16 @@ const tabsEl = $("video-filter");
 const moreBtn = $("video-more");
 const jumpEl = $("video-jump");
 const viewer = $("vid-viewer");
-const player = $("vid-player");
-const statusEl = $("vid-status");
-const statusText = $("vid-status-text");
-const retryBtn = $("vid-retry");
+const trackEl = $("vid-track");
 const closeBtn = $("vid-close");
-const vMeta = $("vid-meta");
-const vTitle = $("vid-title");
-const vCaption = $("vid-caption");
+const countEl = $("vid-count");
+const prevBtn = $("vid-prev");
+const nextBtn = $("vid-next");
+const seekEl = $("vid-seek");
+const timeEl = $("vid-time");
+const totalEl = $("vid-total");
+const speedBtn = $("vid-speed");
+const muteBtn = $("vid-mute");
 
 const items = []; // { id, key, title, caption, category, poster, dur, w, h, pw, ph, date, el }
 let lastDoc = null; // the last video shown so far: the next page starts after it
@@ -262,6 +276,8 @@ async function loadPage() {
       listEl.appendChild(item.el);
       items.push(item);
     });
+    // Ask for the first two play links right away: it also opens the connection to the video server early.
+    if (!loadedOnce) items.slice(0, 2).forEach((it) => prefetchLink(it.key));
     loadedOnce = true;
   } catch (error) {
     console.warn("Videos could not be loaded:", error);
@@ -272,10 +288,7 @@ async function loadPage() {
   }
 }
 
-// ---------- the player pop-up ----------
-let current = null; // the video being shown: { item, token, retried, played, abort }
-let openToken = 0;
-
+// ---------- play links ----------
 // Play links are asked for ahead of the tap (when a card scrolls into view, is touched or hovered), so
 // that by the time someone presses play the link is already here. A link stays valid for hours; we keep
 // it for 20 minutes only, to be safe.
@@ -351,22 +364,6 @@ async function fetchPlayLink(key, signal) {
   return body.url;
 }
 
-function setStatus(kind, message) {
-  if (!kind) {
-    statusEl.hidden = true;
-    return;
-  }
-  const failed = kind === "error";
-  statusEl.hidden = false;
-  statusEl.dataset.kind = kind;
-  statusText.textContent = failed
-    ? message || "This video couldn't load. Please tap Try again."
-    : kind === "buffering"
-      ? "Buffering…"
-      : "Loading video…";
-  retryBtn.hidden = !failed;
-}
-
 function track(item) {
   try {
     if (typeof gtag === "function") gtag("event", "work_video_play", { video_category: item.category });
@@ -409,99 +406,567 @@ function failureMessage(code, reachable, key) {
   return `This video couldn't load. Please tap Try again.${tail}`;
 }
 
-async function giveUp(cur, code) {
-  const token = cur.token;
-  cur.failing = true; // one explanation per failure, even if the browser reports it twice
-  const reachable = await canReachVideoServer(player.getAttribute("src"));
-  if (!current || current.token !== token) return; // closed or replaced while finding out
-  setStatus("error", failureMessage(code, reachable, cur.item.key));
+
+// ---------- the full-screen player ----------
+// One "slide" per video, in the order of the cards on the page (and only the kind shown by the current tab).
+// slide = { item, el, video, state, wantPlay, retried, failing, errored, played, resumeAt, loadToken, abort, ... }
+let slides = [];
+let activeIdx = -1;
+let soundOn = true; //        flipped by the speaker button (or by the browser refusing sound before a tap)
+let speedIdx = 0;
+let neighboursOk = false; //  true once the current video is playing smoothly: only then are the next ones loaded
+let settleTimer = 0;
+let scrubbing = false;
+
+const visibleItems = () => items.filter((it) => activeFilter === "all" || it.category === activeFilter);
+const activeSlide = () => slides[activeIdx] || null;
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function durationOf(slide) {
+  const v = slide && slide.video;
+  return v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (slide && slide.item.dur) || 0;
 }
 
-async function startPlayback(resumeAt, fresh) {
-  const cur = current;
-  if (!cur) return;
-  const token = cur.token;
-  cur.failing = false;
-  if (cur.abort) cur.abort.abort();
-  cur.abort = typeof AbortController === "function" ? new AbortController() : null;
-  setStatus("loading");
-  let url;
-  try {
-    url = await getPlayLink(cur.item.key, cur.abort ? cur.abort.signal : undefined, fresh);
-  } catch (error) {
-    if (!current || current.token !== token) return; // closed or replaced while waiting
-    if (error && error.name === "AbortError") return;
-    console.warn("Could not get a play link:", error);
-    setStatus("error");
+// ----- one slide -----
+// The description is cut after a few words with "Read more", like a WhatsApp status; the full text opens in place.
+function previewText(text) {
+  if (text.length <= CAPTION_PREVIEW + 20) return null; // short enough: show it all, no button
+  let cut = text.slice(0, CAPTION_PREVIEW);
+  const space = cut.search(/\s\S*$/);
+  if (space > CAPTION_PREVIEW - 25) cut = cut.slice(0, space);
+  return cut.trimEnd() + "… "; // the space keeps "Read more" off the text, and vanishes if "Read more" starts a new line
+}
+
+function buildCaption(item) {
+  const cap = el("div", "vid-cap");
+  const inner = el("div", "vid-cap-scroll");
+  const meta = [CARD_LABEL[item.category], item.date].filter(Boolean).join(" · ");
+  if (meta) inner.appendChild(el("p", "vid-cap-meta", meta));
+  inner.appendChild(el("h3", "vid-cap-title", item.title));
+  if (item.caption) {
+    const text = el("p", "vid-cap-text");
+    const short = previewText(item.caption);
+    if (!short) {
+      text.textContent = item.caption;
+    } else {
+      const body = document.createTextNode(short);
+      const more = el("button", "vid-readmore", "Read more");
+      more.type = "button";
+      more.setAttribute("aria-expanded", "false");
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = !cap.classList.contains("is-open");
+        cap.classList.toggle("is-open", open);
+        body.nodeValue = open ? item.caption : short;
+        more.textContent = open ? "Show less" : "Read more";
+        more.setAttribute("aria-expanded", open ? "true" : "false");
+        if (!open) inner.scrollTop = 0;
+      });
+      text.append(body, more);
+    }
+    inner.appendChild(text);
+  }
+  cap.appendChild(inner);
+  return cap;
+}
+
+function buildSlide(item) {
+  const slide = el("section", "vid-slide");
+  slide.setAttribute("role", "group");
+  slide.setAttribute("aria-roledescription", "slide");
+  slide.dataset.state = "idle";
+
+  const busy = el("div", "vid-busy");
+  busy.appendChild(el("span", "vid-spin"));
+  const slow = el("p", "vid-slow", "Slow connection. Still loading…");
+  slow.hidden = true;
+  busy.appendChild(slow);
+
+  const center = el("span", "vid-center");
+  center.setAttribute("aria-hidden", "true");
+  center.appendChild(playIcon());
+
+  const errBox = el("div", "vid-status");
+  errBox.hidden = true;
+  const errText = el("p");
+  errText.setAttribute("role", "alert");
+  const retry = el("button", "btn-accent", "Try again");
+  retry.type = "button";
+  errBox.append(errText, retry);
+
+  slide.append(busy, center, buildCaption(item), errBox);
+
+  const s = {
+    item,
+    el: slide,
+    video: null,
+    busy,
+    slow,
+    errBox,
+    errText,
+    state: "idle", //     idle | loading | playing | paused | error
+    wantPlay: false, //   we are trying to have this one playing (cleared when swiped away or paused)
+    errored: false,
+    failing: false, //    one explanation per failure, even if the browser reports it twice
+    played: false, //     counted once for analytics
+    retried: 0,
+    resumeAt: 0,
+    loadToken: 0,
+    abort: null,
+    busyOn: false,
+    busyTimer: 0,
+    slowTimer: 0,
+  };
+
+  retry.addEventListener("click", () => retrySlide(s));
+  slide.addEventListener("click", (e) => {
+    if (e.target.closest(".vid-cap, .vid-status, button")) return; // text, the error box and buttons are not "tap the video"
+    toggleSlide(s);
+  });
+  return s;
+}
+
+function setState(s, state) {
+  s.state = state;
+  s.el.dataset.state = state;
+}
+
+// Spinner: waits a moment before showing (a video that starts at once never shows one) and only talks if it is slow.
+function setBusy(s, on) {
+  if (on === s.busyOn) return;
+  s.busyOn = on;
+  clearTimeout(s.busyTimer);
+  clearTimeout(s.slowTimer);
+  s.busyTimer = s.slowTimer = 0;
+  if (!on) {
+    s.el.classList.remove("is-busy");
+    s.slow.hidden = true;
     return;
   }
-  if (!current || current.token !== token) return;
-  if (resumeAt > 1) {
-    player.addEventListener(
-      "loadedmetadata",
-      () => {
-        try {
-          player.currentTime = resumeAt;
-        } catch (e) {
-          /* not seekable yet: start from the beginning */
-        }
-      },
-      { once: true }
-    );
+  s.busyTimer = setTimeout(() => s.el.classList.add("is-busy"), SPINNER_DELAY_MS);
+  s.slowTimer = setTimeout(() => {
+    s.slow.hidden = false;
+  }, SLOW_HINT_MS);
+}
+
+function showError(s, message) {
+  s.errored = true;
+  s.wantPlay = false;
+  setBusy(s, false);
+  setState(s, "error");
+  s.errText.textContent = message || "This video couldn't load. Please tap Try again.";
+  s.errBox.hidden = false;
+}
+
+function hideError(s) {
+  s.errored = false;
+  s.errBox.hidden = true;
+}
+
+// ----- the <video> of a slide -----
+// Created for the slide on screen and the two next to it, destroyed when a slide is two or more away
+// (which also stops its download).
+function ensureVideo(s) {
+  if (s.video) return s.video;
+  const v = document.createElement("video");
+  v.className = "vid-player";
+  v.setAttribute("playsinline", "");
+  v.setAttribute("webkit-playsinline", "");
+  v.setAttribute("disableremoteplayback", "");
+  v.controls = false;
+  v.preload = "none"; // the cover picture only, until this slide is told to load
+  v.muted = !soundOn;
+  v.setAttribute("aria-label", s.item.title);
+  if (s.item.poster) v.poster = s.item.poster;
+  wireVideo(s, v);
+  s.el.insertBefore(v, s.el.firstChild);
+  s.video = v;
+  return v;
+}
+
+function destroyVideo(s) {
+  const v = s.video;
+  if (!v) return;
+  s.loadToken += 1; // a play-link request still on its way is ignored
+  if (s.abort) {
+    s.abort.abort();
+    s.abort = null;
   }
-  player.preload = "auto"; // start fetching the picture immediately; the user already asked to watch
-  player.src = url;
-  const started = player.play();
+  s.video = null; // first, so the "emptied" events below are ignored
+  try {
+    v.pause();
+    v.removeAttribute("src");
+    v.load();
+  } catch (e) {
+    /* already gone */
+  }
+  v.remove();
+}
+
+function wireVideo(s, v) {
+  const live = () => s.video === v;
+  const isActive = () => live() && slides[activeIdx] === s;
+
+  v.addEventListener("loadedmetadata", () => {
+    if (!live()) return;
+    v.playbackRate = SPEEDS[speedIdx];
+    if (s.resumeAt > 1) {
+      try {
+        v.currentTime = s.resumeAt;
+      } catch (e) {
+        /* not seekable yet: start from the beginning */
+      }
+    }
+    s.resumeAt = 0;
+    if (isActive()) syncControls();
+  });
+  v.addEventListener("durationchange", () => {
+    if (isActive()) syncControls();
+  });
+  v.addEventListener("waiting", () => {
+    if (live() && s.wantPlay && v.getAttribute("src")) setBusy(s, true);
+  });
+  v.addEventListener("canplay", () => {
+    if (live() && !v.paused) setBusy(s, false);
+  });
+  v.addEventListener("playing", () => {
+    if (!live()) return;
+    setBusy(s, false);
+    setState(s, "playing");
+    if (!s.played) {
+      s.played = true;
+      track(s.item);
+    }
+  });
+  v.addEventListener("canplaythrough", () => {
+    if (isActive()) allowNeighbours();
+  });
+  v.addEventListener("timeupdate", () => {
+    if (isActive() && !scrubbing) syncProgress();
+  });
+  v.addEventListener("progress", () => {
+    if (!isActive()) return;
+    syncBuffered();
+    if (!neighboursOk && bufferedAhead(v) >= WARM_NEXT_AHEAD_S) allowNeighbours();
+  });
+  v.addEventListener("ended", () => {
+    if (!live()) return;
+    s.wantPlay = false;
+    setBusy(s, false);
+    setState(s, "paused"); // shows the play button; a tap plays it again from the start
+    if (isActive()) syncProgress();
+  });
+  v.addEventListener("error", () => {
+    if (!live() || s.failing || !v.getAttribute("src")) return; // not a real failure: the video is just being emptied
+    const code = v.error ? v.error.code : 0;
+    // The browser's reason is vague: a refused or expired link is reported the same way as a format it can't play
+    // (code 4), so a fresh link is always tried first, and the page only explains once that has failed too.
+    console.warn("A video could not be played:", code, v.error && v.error.message);
+    if (!isActive()) {
+      destroyVideo(s); // a video we only had warming up: drop it, it will be set up again if someone swipes to it
+      return;
+    }
+    if (s.retried < AUTO_RETRIES) {
+      s.retried += 1; // an expired, refused or dropped link: ask for a fresh one, and carry on from the same spot
+      s.resumeAt = v.currentTime || 0;
+      loadSource(s, { fresh: true, play: s.wantPlay });
+      return;
+    }
+    giveUp(s, code);
+  });
+}
+
+function bufferedAhead(v) {
+  const t = v.currentTime || 0;
+  for (let i = 0; i < v.buffered.length; i += 1) {
+    if (v.buffered.start(i) <= t + 0.25 && v.buffered.end(i) >= t) return v.buffered.end(i) - t;
+  }
+  return 0;
+}
+
+// Gets the (usually already waiting) play link and hands it to the video. Safe to call twice: the later call wins.
+async function loadSource(s, { fresh = false, play = false } = {}) {
+  const v = ensureVideo(s);
+  const token = (s.loadToken += 1);
+  if (s.abort) s.abort.abort();
+  s.abort = typeof AbortController === "function" ? new AbortController() : null;
+  let url;
+  try {
+    url = await getPlayLink(s.item.key, s.abort ? s.abort.signal : undefined, fresh);
+  } catch (error) {
+    if (s.video !== v || s.loadToken !== token) return; // swiped away, or a newer request took over
+    if (error && error.name === "AbortError") return;
+    console.warn("Could not get a play link:", error);
+    if (slides[activeIdx] === s) showError(s, null);
+    return;
+  }
+  if (s.video !== v || s.loadToken !== token) return;
+  // A retry (fresh = true) must reload even when the link is the same one (links are shared within the hour), so the
+  // address is set again; otherwise it is only set when it is new, so a second call can't restart a download.
+  if (fresh || v.getAttribute("src") !== url) v.src = url;
+  if (play && s.wantPlay) tryPlay(s);
+}
+
+function tryPlay(s) {
+  const v = s.video;
+  if (!v) return;
+  v.muted = !soundOn;
+  v.playbackRate = SPEEDS[speedIdx];
+  const started = v.play();
   if (started && typeof started.catch === "function") {
     started.catch((e) => {
-      // Blocked autoplay (some phones only start a video from the tap itself): nothing is wrong, so don't leave the
-      // loading spinner over a paused video. The play button on the controls starts it.
-      if (current && current.token === token && e && e.name === "NotAllowedError") setStatus(null);
+      if (s.video !== v || !s.wantPlay || !e || e.name !== "NotAllowedError") return; // anything else is reported by the video's own events
+      if (!v.muted) {
+        // Some phones only start a video WITH sound from a tap. Start it muted instead; the speaker button turns sound on.
+        soundOn = false;
+        syncControls();
+        tryPlay(s);
+      } else {
+        s.wantPlay = false; // nothing is wrong: the big play button starts it
+        setBusy(s, false);
+        setState(s, "paused");
+      }
     });
   }
 }
 
+function playSlide(s) {
+  s.wantPlay = true;
+  s.failing = false;
+  hideError(s);
+  const v = ensureVideo(s);
+  v.preload = "auto"; // the visitor asked to watch this one: fetch the picture straight away
+  setState(s, "loading");
+  setBusy(s, true);
+  if (v.getAttribute("src")) tryPlay(s);
+  else loadSource(s, { play: true });
+}
+
+function pauseSlide(s) {
+  s.wantPlay = false;
+  setBusy(s, false);
+  if (s.video) {
+    try {
+      s.video.pause();
+    } catch (e) {
+      /* nothing to pause */
+    }
+  }
+  if (!s.errored) setState(s, "idle");
+}
+
+// A tap on the video.
+function toggleSlide(s) {
+  const v = s.video;
+  if (!v || s.errored) return;
+  if (!v.getAttribute("src")) {
+    playSlide(s);
+  } else if (v.paused) {
+    s.wantPlay = true;
+    setState(s, "loading");
+    tryPlay(s);
+  } else {
+    s.wantPlay = false;
+    v.pause();
+    setBusy(s, false);
+    setState(s, "paused");
+  }
+  if (s === activeSlide()) syncControls();
+}
+
+function retrySlide(s) {
+  s.retried = 0;
+  s.failing = false;
+  s.resumeAt = s.video ? s.video.currentTime || 0 : 0;
+  s.wantPlay = true;
+  hideError(s);
+  setState(s, "loading");
+  setBusy(s, true);
+  loadSource(s, { fresh: true, play: true });
+}
+
+async function giveUp(s, code) {
+  const v = s.video;
+  if (!v) return;
+  s.failing = true;
+  const reachable = await canReachVideoServer(v.getAttribute("src"));
+  if (s.video !== v) return; // closed or replaced while finding out
+  showError(s, failureMessage(code, reachable, s.item.key));
+}
+
+// ----- which videos hold a <video> right now -----
+function updateWindow(idx) {
+  slides.forEach((s, i) => {
+    const d = Math.abs(i - idx);
+    if (d <= 2) prefetchLink(s.item.key); // a tiny request: makes a swipe start without waiting for a link
+    if (d <= 1) ensureVideo(s); //           cover picture only, no download yet
+    else if (s.video) destroyVideo(s);
+  });
+  if (!neighboursOk) return;
+  [idx + 1, idx - 1].forEach((i) => {
+    const s = slides[i];
+    if (!s || s.errored) return;
+    const v = ensureVideo(s);
+    if (v.getAttribute("src")) return;
+    v.preload = i > idx ? "auto" : "metadata"; // the next one gets a head start; the one behind only its first bytes
+    loadSource(s);
+  });
+}
+
+// The current video is playing smoothly, so it is safe to start warming the next one without slowing it down.
+function allowNeighbours() {
+  if (neighboursOk || activeIdx < 0) return;
+  neighboursOk = true;
+  updateWindow(activeIdx);
+}
+
+function activate(idx) {
+  const next = slides[idx];
+  if (!next) return;
+  const prev = activeSlide();
+  if (prev && prev !== next) pauseSlide(prev);
+  activeIdx = idx;
+  neighboursOk = false;
+  updateWindow(idx);
+  playSlide(next);
+  const v = next.video;
+  if (v && v.readyState >= 4) allowNeighbours(); // it was warmed up as a neighbour and is ready: warm the next one too
+  syncControls();
+  maybeLoadMore();
+}
+
+// ----- swiping -----
+function onTrackScroll() {
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(settle, SETTLE_MS);
+}
+
+function settle() {
+  const w = trackEl.clientWidth;
+  if (!w || !slides.length) return;
+  const idx = Math.max(0, Math.min(slides.length - 1, Math.round(trackEl.scrollLeft / w)));
+  if (idx !== activeIdx) activate(idx);
+}
+
+function goTo(idx) {
+  const w = trackEl.clientWidth;
+  if (!w) return;
+  const target = Math.max(0, Math.min(slides.length - 1, idx));
+  trackEl.scrollTo({ left: target * w, behavior: reducedMotion() ? "auto" : "smooth" });
+}
+
+function step(delta) {
+  const w = trackEl.clientWidth || 1;
+  goTo(Math.round(trackEl.scrollLeft / w) + delta); // from where the row is now, so quick repeated presses keep moving
+}
+
+// When the visitor nears the last video of what has loaded, the next six are fetched and appended.
+function maybeLoadMore() {
+  if (!viewer.open || !hasMore || loading || moreFailed || activeIdx < slides.length - 2) return;
+  loadPage().then(extendSlides);
+}
+
+function extendSlides() {
+  if (!viewer.open || activeIdx < 0) return;
+  const have = new Set(slides.map((s) => s.item));
+  visibleItems()
+    .filter((it) => !have.has(it))
+    .forEach((it) => {
+      const s = buildSlide(it);
+      slides.push(s);
+      trackEl.appendChild(s.el);
+    });
+  labelSlides();
+  syncControls();
+  updateWindow(activeIdx);
+}
+
+function labelSlides() {
+  slides.forEach((s, i) => s.el.setAttribute("aria-label", `Video ${i + 1} of ${slides.length}`));
+}
+
+// ----- the bar at the bottom (always about the slide on screen) -----
+function syncControls() {
+  const s = activeSlide();
+  if (!s) return;
+  const v = s.video;
+  totalEl.textContent = clock(durationOf(s));
+  seekEl.disabled = !(v && v.readyState >= 1);
+  speedBtn.textContent = `${SPEEDS[speedIdx].toFixed(1)}x`;
+  speedBtn.setAttribute("aria-label", `Playback speed ${SPEEDS[speedIdx]}x. Tap to change.`);
+  muteBtn.dataset.muted = soundOn ? "0" : "1";
+  muteBtn.setAttribute("aria-label", soundOn ? "Mute" : "Turn sound on");
+  countEl.textContent = slides.length > 1 ? `${activeIdx + 1} / ${slides.length}` : "";
+  prevBtn.disabled = activeIdx <= 0;
+  nextBtn.disabled = activeIdx >= slides.length - 1;
+  syncProgress();
+  syncBuffered();
+}
+
+function syncProgress() {
+  const s = activeSlide();
+  const v = s && s.video;
+  const dur = durationOf(s);
+  const t = v ? v.currentTime || 0 : 0;
+  const p = dur ? Math.min(1, t / dur) : 0;
+  seekEl.value = String(Math.round(p * 1000));
+  seekEl.style.setProperty("--p", `${(p * 100).toFixed(2)}%`);
+  timeEl.textContent = clock(t);
+  seekEl.setAttribute("aria-valuetext", dur ? `${clock(t)} of ${clock(dur)}` : clock(t));
+}
+
+function syncBuffered() {
+  const s = activeSlide();
+  const v = s && s.video;
+  const dur = durationOf(s);
+  const end = v && dur ? (v.currentTime || 0) + bufferedAhead(v) : 0;
+  seekEl.style.setProperty("--b", `${(dur ? Math.min(1, end / dur) * 100 : 0).toFixed(2)}%`);
+}
+
+function seekTo() {
+  const s = activeSlide();
+  const v = s && s.video;
+  if (!v || v.readyState < 1) return;
+  const dur = durationOf(s);
+  if (!dur) return;
+  try {
+    v.currentTime = (Number(seekEl.value) / 1000) * dur;
+  } catch (e) {
+    /* not seekable yet */
+  }
+}
+
+// ----- opening and closing -----
 function openViewer(item) {
-  const token = ++openToken;
-  if (current && current.abort) current.abort.abort();
-  current = { item, token, retried: 0, played: false, failing: false, abort: null };
-
-  vMeta.textContent = [CARD_LABEL[item.category], item.date].filter(Boolean).join(" · ");
-  vTitle.textContent = item.title;
-  vCaption.textContent = item.caption;
-  vCaption.hidden = !item.caption;
-  const ratio = item.w && item.h ? item.w / item.h : item.pw && item.ph ? item.pw / item.ph : 16 / 9;
-  viewer.style.setProperty("--ar", String(Math.min(2.5, Math.max(0.4, Math.round(ratio * 1000) / 1000))));
-
-  player.pause();
-  player.removeAttribute("src");
-  if (item.poster) player.setAttribute("poster", item.poster);
-  else player.removeAttribute("poster");
-  player.load();
-  setStatus("loading");
+  const list = visibleItems();
+  const idx = Math.max(0, list.indexOf(item));
+  slides.forEach(destroyVideo);
+  slides = list.map(buildSlide);
+  trackEl.replaceChildren(...slides.map((s) => s.el));
+  labelSlides();
+  activeIdx = -1;
 
   if (!viewer.open) {
     if (typeof viewer.showModal === "function") viewer.showModal();
     else viewer.setAttribute("open", "");
   }
   document.documentElement.classList.add("vid-open"); // stops the page behind from scrolling (see work-videos.css)
-  startPlayback(0);
+  trackEl.scrollLeft = idx * trackEl.clientWidth; // start on the tapped video, no animation
+  activate(idx); // the play link is normally already here (asked for when the card scrolled into view or was touched)
 }
 
-// Stops the download, forgets the link and puts the page back as it was.
+// Stops every download and puts the page back as it was.
 function cleanup() {
-  if (!current && !player.getAttribute("src")) {
-    document.documentElement.classList.remove("vid-open");
-    return;
-  }
-  openToken += 1;
-  if (current && current.abort) current.abort.abort();
-  current = null;
-  player.pause();
-  player.removeAttribute("src");
-  player.removeAttribute("poster");
-  player.load();
-  setStatus(null);
+  clearTimeout(settleTimer);
+  slides.forEach((s) => {
+    setBusy(s, false);
+    destroyVideo(s);
+  });
+  slides = [];
+  activeIdx = -1;
+  neighboursOk = false;
+  scrubbing = false;
+  trackEl.replaceChildren();
   document.documentElement.classList.remove("vid-open");
 }
 
@@ -517,45 +982,80 @@ function closeViewer() {
 function wireViewer() {
   viewer.addEventListener("close", cleanup); // Esc key, the close button, or the Android back gesture
   closeBtn.addEventListener("click", closeViewer);
-  viewer.addEventListener("click", (e) => {
-    if (e.target === viewer) closeViewer(); // a tap on the dark area around the video
+
+  trackEl.addEventListener("scroll", onTrackScroll, { passive: true });
+  // After a mouse / finger click on a control, the keyboard shortcuts (Space, arrows) go back to the video; after a
+  // keyboard press (e.detail is 0) focus stays where it is, so keyboard users keep their place.
+  const backToVideo = (e) => {
+    if (e.detail > 0) trackEl.focus({ preventScroll: true });
+  };
+  prevBtn.addEventListener("click", (e) => {
+    step(-1);
+    backToVideo(e);
   });
-  retryBtn.addEventListener("click", () => {
-    if (!current) return;
-    current.retried = 0;
-    startPlayback(player.currentTime || 0, true);
+  nextBtn.addEventListener("click", (e) => {
+    step(1);
+    backToVideo(e);
   });
-  player.addEventListener("loadeddata", () => {
-    if (current) setStatus(null);
+  window.addEventListener("resize", () => {
+    // a turned phone or resized window: stay on the same video instead of landing between two
+    if (viewer.open && activeIdx >= 0) trackEl.scrollLeft = activeIdx * trackEl.clientWidth;
   });
-  player.addEventListener("playing", () => {
-    if (!current) return;
-    setStatus(null);
-    if (!current.played) {
-      current.played = true;
-      track(current.item);
+
+  speedBtn.addEventListener("click", (e) => {
+    speedIdx = (speedIdx + 1) % SPEEDS.length;
+    slides.forEach((s) => {
+      if (s.video) s.video.playbackRate = SPEEDS[speedIdx];
+    });
+    syncControls();
+    backToVideo(e);
+  });
+  muteBtn.addEventListener("click", (e) => {
+    soundOn = !soundOn;
+    slides.forEach((s) => {
+      if (s.video) s.video.muted = !soundOn;
+    });
+    syncControls();
+    backToVideo(e);
+  });
+
+  // the progress bar: the time follows the finger while dragging, the video jumps when the finger lifts
+  seekEl.addEventListener("pointerdown", () => {
+    scrubbing = true;
+  });
+  seekEl.addEventListener("input", () => {
+    const dur = durationOf(activeSlide());
+    const t = (Number(seekEl.value) / 1000) * dur;
+    timeEl.textContent = clock(t);
+    seekEl.style.setProperty("--p", `${Number(seekEl.value) / 10}%`);
+  });
+  seekEl.addEventListener("change", () => {
+    seekTo();
+    scrubbing = false;
+  });
+  ["pointerup", "pointercancel", "blur"].forEach((type) =>
+    seekEl.addEventListener(type, () => {
+      scrubbing = false;
+    })
+  );
+
+  viewer.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const onButton = e.target && e.target.closest && e.target.closest("button");
+    const onSeek = e.target === seekEl; // the progress bar uses the arrow keys itself
+    if (e.key === "ArrowRight" && !onSeek) {
+      e.preventDefault();
+      step(1);
+    } else if (e.key === "ArrowLeft" && !onSeek) {
+      e.preventDefault();
+      step(-1);
+    } else if ((e.key === " " || e.key === "k" || e.key === "K") && !onButton) {
+      e.preventDefault();
+      const s = activeSlide();
+      if (s) toggleSlide(s);
+    } else if (e.key === "m" || e.key === "M") {
+      muteBtn.click();
     }
-  });
-  player.addEventListener("error", () => {
-    const cur = current;
-    if (!cur || cur.failing || !player.getAttribute("src")) return; // not a real failure: the viewer is just being emptied
-    const code = player.error ? player.error.code : 0;
-    // The browser's reason is vague: a refused or expired link is reported the same way as a format it can't play
-    // (code 4), so a fresh link is always tried first, and the page only explains once that has failed too.
-    console.warn("A video could not be played:", code, player.error && player.error.message);
-    if (cur.retried < AUTO_RETRIES) {
-      cur.retried += 1; // an expired, refused or dropped link: ask for a fresh one, and carry on from the same spot
-      startPlayback(player.currentTime || 0, true);
-      return;
-    }
-    giveUp(cur, code);
-  });
-  // Slow network: show a spinner while the picture waits for data instead of looking frozen.
-  player.addEventListener("waiting", () => {
-    if (current && player.getAttribute("src")) setStatus("buffering");
-  });
-  player.addEventListener("canplay", () => {
-    if (current) setStatus(null);
   });
 }
 
@@ -570,6 +1070,9 @@ async function start() {
 }
 
 // If work.html is an older copy without the video section, there is nothing to do.
-if (section && listEl && tabsEl && moreBtn && viewer && player && statusEl && statusText && retryBtn && closeBtn && vMeta && vTitle && vCaption) {
+if (
+  section && listEl && tabsEl && moreBtn && viewer && trackEl && closeBtn && countEl && prevBtn && nextBtn &&
+  seekEl && timeEl && totalEl && speedBtn && muteBtn
+) {
   start();
 }

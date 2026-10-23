@@ -80,64 +80,177 @@
 .vid-more .work-filter-btn{min-height:2.75rem;padding-inline:1.25rem;}
 .vid-more .work-filter-btn:disabled{opacity:.6;cursor:default;}
 
-/* ---------- the player pop-up ---------- */
+/* ---------- the full-screen player ----------
+   The pop-up fills the whole screen (edge to edge, under the status bar and notch). Each video is one slide in a
+   row that is swiped left / right (native scroll-snap, so it follows the finger like any phone app). The title and
+   description sit over the bottom of the video, above the progress bar. */
 .vid-viewer{
-  --ar:1.7778;          /* width / height of the video, set from the page code */
-  --vid-chrome:14rem;   /* room kept above and below the picture on screen */
-  position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;
-  padding:3.75rem 1rem 1.25rem;border:0;overflow:auto;
-  background:oklch(0.05 0.006 260 / .96);color:#fff;
+  --ctl-h:3.25rem;      /* height of the progress bar row (the safe-area inset is added on top) */
+  --vid-gold:var(--brand-gold, oklch(0.75 0.135 82));
+  position:fixed;inset:0;width:100%;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;
+  padding:0;border:0;overflow:hidden;background:#000;color:#fff;
 }
-.vid-viewer::backdrop{background:rgba(0,0,0,.6);}
+.vid-viewer::backdrop{background:#000;}
 /* Locks the page behind the player. On <html>, never <body>: a body lock would un-stick the site header. */
 html.vid-open{overflow:hidden;}
-.vid-viewer[open]{display:flex;flex-direction:column;align-items:center;gap:1rem;}
-.vid-close{
-  position:fixed;top:.9rem;right:.9rem;z-index:2;width:2.75rem;height:2.75rem;border-radius:50%;
-  display:grid;place-items:center;background:oklch(1 0 0/0.14);color:#fff;
-}
-.vid-close:hover{background:oklch(1 0 0/0.24);}
-.vid-close:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
+.vid-viewer[open]{display:block;animation:vidFade .18s ease both;}
+@keyframes vidFade{from{opacity:0;}to{opacity:1;}}
 
-.vid-stage{width:100%;max-width:60rem;margin-top:auto;display:flex;justify-content:center;}
-/* The box is as big as fits on screen while keeping the video's own shape, so a tall phone video is
-   not squeezed into a wide frame. (The spacer below holds the height; it works without CSS aspect-ratio.) */
-.vid-box{
-  position:relative;
-  width:min(100%, calc((100vh - var(--vid-chrome)) * var(--ar)));
-  width:min(100%, calc((100dvh - var(--vid-chrome)) * var(--ar)));
+/* the swipe row */
+.vid-track{
+  position:absolute;inset:0;display:flex;overflow-x:auto;overflow-y:hidden;outline:0;
+  scroll-snap-type:x mandatory;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;touch-action:pan-x;
 }
-.vid-ratio{display:block;width:100%;height:0;padding-bottom:calc(100% / var(--ar));}
+.vid-track::-webkit-scrollbar{display:none;}
+.vid-slide{
+  position:relative;flex:0 0 100%;width:100%;height:100%;overflow:hidden;background:#000;
+  scroll-snap-align:center;scroll-snap-stop:always; /* one video per swipe, even on a hard flick */
+  cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;
+}
 .vid-player{
   position:absolute;inset:0;display:block;width:100%;height:100%;
-  border-radius:.6rem;background:#000;object-fit:contain;
+  object-fit:contain;background:#000;outline:0;
 }
-.vid-status{
-  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;
-  padding:1rem;border-radius:.6rem;text-align:center;
-  background:oklch(0.05 0.006 260 / .55);color:#fff;font-size:calc(.9rem * var(--ts));line-height:1.45;
-  pointer-events:none; /* while loading, taps still reach the video controls underneath */
+
+/* spinner: appears only if the video is still not moving after a moment, and says nothing unless it is really slow */
+.vid-busy{
+  position:absolute;inset:0;z-index:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:.9rem;
+  pointer-events:none;
 }
-.vid-status[data-kind="error"]{background:oklch(0.05 0.006 260 / .85);pointer-events:auto;}
-.vid-status .btn-accent{font-size:calc(.9rem * var(--ts));padding:.65rem 1.25rem;}
+.vid-slide.is-busy .vid-busy{display:flex;}
+.vid-slide[data-state="error"] .vid-busy{display:none;}
 .vid-spin{
-  width:2rem;height:2rem;border-radius:50%;
-  border:3px solid rgba(255,255,255,.25);border-top-color:var(--brand-gold);
-  animation:vidSpin .8s linear infinite;
+  width:2.6rem;height:2.6rem;border-radius:50%;
+  border:3px solid rgba(255,255,255,.25);border-top-color:var(--vid-gold);
+  animation:vidSpin .8s linear infinite;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));
 }
-.vid-status[data-kind="error"] .vid-spin{display:none;}
+.vid-slow{
+  margin:0;padding:.35rem .8rem;border-radius:999px;background:rgba(0,0,0,.6);
+  font-size:calc(.8rem * var(--ts));font-weight:600;
+}
 @keyframes vidSpin{to{transform:rotate(360deg);}}
 
-.vid-info{width:100%;max-width:60rem;margin-bottom:auto;text-align:left;}
-.vid-info-label{
-  font-size:calc(.68rem * var(--ts));font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-gold);
+/* big play button: shown while a video is paused (tap the video to pause / play) */
+.vid-center{
+  position:absolute;left:50%;top:50%;z-index:1;width:4.5rem;height:4.5rem;margin:-2.25rem 0 0 -2.25rem;
+  display:grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;
+  opacity:0;transform:scale(.85);transition:opacity .15s ease, transform .15s ease;pointer-events:none;
 }
-.vid-info h3{margin-top:.3rem;color:#fff;font-size:calc(1.05rem * var(--ts));font-weight:700;line-height:1.3;overflow-wrap:anywhere;}
-.vid-full-caption{margin-top:.45rem;font-size:calc(.9rem * var(--ts));line-height:1.55;color:oklch(0.92 0.006 260);overflow-wrap:anywhere;}
+.vid-center svg{width:2rem;height:2rem;margin-left:.2rem;fill:currentColor;}
+.vid-slide[data-state="paused"] .vid-center{opacity:1;transform:none;}
+
+/* problem message (shown over the video) */
+.vid-status{
+  position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;
+  padding:1.5rem;text-align:center;background:oklch(0.05 0.006 260 / .82);cursor:default;
+  font-size:calc(.95rem * var(--ts));line-height:1.5;
+}
+.vid-status p{margin:0;max-width:22rem;}
+.vid-status .btn-accent{font-size:calc(.9rem * var(--ts));padding:.65rem 1.25rem;}
+
+/* title + description over the bottom of the video */
+.vid-cap{
+  position:absolute;left:0;right:0;z-index:2;
+  bottom:calc(var(--ctl-h) + env(safe-area-inset-bottom, 0px));
+  padding:3.5rem calc(1rem + env(safe-area-inset-right, 0px)) .65rem calc(1rem + env(safe-area-inset-left, 0px));
+  background:linear-gradient(to top, rgba(0,0,0,.74) 0%, rgba(0,0,0,.5) 55%, rgba(0,0,0,0) 100%);
+  cursor:default;pointer-events:none; /* taps on the text fall through to the video; only "Read more" is tappable */
+  text-shadow:0 1px 3px rgba(0,0,0,.65);
+}
+.vid-cap-scroll{max-width:46rem;margin-inline:auto;}
+.vid-cap.is-open{pointer-events:auto;background:linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.8) 70%, rgba(0,0,0,0) 100%);}
+.vid-cap.is-open .vid-cap-scroll{max-height:min(50vh, 22rem);max-height:min(50dvh, 22rem);overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;}
+.vid-cap-meta{
+  margin:0;font-size:calc(.7rem * var(--ts));font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vid-gold);
+}
+.vid-cap-title{
+  margin:.25rem 0 0;color:#fff;font-size:calc(1.15rem * var(--ts));font-weight:700;line-height:1.25;overflow-wrap:anywhere;
+}
+.vid-cap-text{
+  margin:.4rem 0 0;color:rgba(255,255,255,.95);font-size:calc(.95rem * var(--ts));line-height:1.45;
+  white-space:pre-line;overflow-wrap:anywhere;
+}
+.vid-readmore{
+  display:inline;margin:0;padding:.2rem 0;border:0;background:none;color:#fff;
+  font:inherit;font-weight:700;cursor:pointer;pointer-events:auto;text-shadow:inherit;
+}
+.vid-readmore:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;border-radius:.2rem;}
+
+/* top row: video counter + close */
+.vid-top{
+  position:absolute;top:0;left:0;right:0;z-index:5;pointer-events:none;
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:calc(.75rem + env(safe-area-inset-top, 0px)) calc(.75rem + env(safe-area-inset-right, 0px)) 1.5rem calc(.9rem + env(safe-area-inset-left, 0px));
+  background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+}
+.vid-count{
+  padding:.25rem .65rem;border-radius:999px;background:rgba(0,0,0,.45);
+  font-size:calc(.8rem * var(--ts));font-weight:700;font-variant-numeric:tabular-nums;
+}
+.vid-close{
+  pointer-events:auto;width:2.75rem;height:2.75rem;border-radius:50%;flex-shrink:0;
+  display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;transition:background .15s ease;
+}
+.vid-close:hover{background:rgba(255,255,255,.22);}
+.vid-close:focus-visible,.vid-nav:focus-visible,.vid-ctl-btn:focus-visible,.vid-seek:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;}
+.vid-close svg,.vid-nav svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* previous / next arrows: only where there is a mouse (phones swipe) */
+.vid-nav{display:none;}
+@media (hover:hover) and (pointer:fine){
+  .vid-nav{
+    position:absolute;top:50%;z-index:5;width:3rem;height:3rem;margin-top:-1.5rem;border-radius:50%;
+    display:grid;place-items:center;background:rgba(0,0,0,.5);color:#fff;transition:background .15s ease, opacity .15s ease;
+  }
+  .vid-nav:hover{background:rgba(255,255,255,.25);}
+  .vid-nav:disabled{opacity:0;pointer-events:none;}
+  .vid-nav-prev{left:1rem;}
+  .vid-nav-next{right:1rem;}
+}
+
+/* progress bar row */
+.vid-controls{
+  position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;align-items:center;gap:.5rem;
+  height:calc(var(--ctl-h) + env(safe-area-inset-bottom, 0px));
+  padding:0 calc(.6rem + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) calc(.9rem + env(safe-area-inset-left, 0px));
+  background:rgba(0,0,0,.55);
+  font-size:calc(.8rem * var(--ts));font-weight:600;font-variant-numeric:tabular-nums;
+}
+.vid-time{min-width:2.4ch;text-align:center;flex-shrink:0;}
+.vid-ctl-btn{
+  flex-shrink:0;min-width:2.5rem;height:2.5rem;padding:0 .4rem;border-radius:.6rem;
+  display:grid;place-items:center;color:#fff;font-weight:700;font-size:calc(.8rem * var(--ts));
+}
+.vid-ctl-btn:hover{background:rgba(255,255,255,.14);}
+.vid-mute svg{width:1.3rem;height:1.3rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.vid-mute[data-muted="0"] .vid-ico-off,.vid-mute[data-muted="1"] .vid-ico-on{display:none;}
+
+.vid-seek{
+  --p:0%;--b:0%;
+  flex:1 1 auto;min-width:0;height:2.5rem;margin:0;padding:0;background:transparent;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+}
+.vid-seek:disabled{cursor:default;opacity:.55;}
+.vid-seek::-webkit-slider-runnable-track{
+  height:.3rem;border-radius:999px;
+  background:linear-gradient(to right, var(--vid-gold) var(--p), rgba(255,255,255,.6) var(--p), rgba(255,255,255,.6) var(--b), rgba(255,255,255,.22) var(--b));
+}
+.vid-seek::-moz-range-track{
+  height:.3rem;border-radius:999px;
+  background:linear-gradient(to right, var(--vid-gold) var(--p), rgba(255,255,255,.6) var(--p), rgba(255,255,255,.6) var(--b), rgba(255,255,255,.22) var(--b));
+}
+.vid-seek::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:1rem;height:1rem;margin-top:-.35rem;border:0;border-radius:50%;
+  background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);
+}
+.vid-seek::-moz-range-thumb{width:1rem;height:1rem;border:0;border-radius:50%;background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);}
 
 @media (prefers-reduced-motion:reduce){
   .vid-item{animation:none;transition:none;}
   .vid-item:hover{transform:none;}
   .vid-spin{animation:none;}
   .vid-play,.vid-media::after{transition:none;}
+  .vid-viewer[open]{animation:none;}
+  .vid-center,.vid-close,.vid-nav{transition:none;}
 }
