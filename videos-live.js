@@ -457,7 +457,7 @@ function buildCaption(item) {
         e.stopPropagation();
         const open = !cap.classList.contains("is-open");
         cap.classList.toggle("is-open", open);
-        body.nodeValue = open ? item.caption : short;
+        body.nodeValue = open ? item.caption + " " : short; // (the space keeps the button off the last word, as it does in the cut text)
         more.textContent = open ? "Show less" : "Read more";
         more.setAttribute("aria-expanded", open ? "true" : "false");
         if (!open) inner.scrollTop = 0;
@@ -638,6 +638,15 @@ function wireVideo(s, v) {
       track(s.item);
     }
   });
+  v.addEventListener("pause", () => {
+    // Paused by something outside the page (a phone call, another app, a headset button): show the play button instead
+    // of a frozen picture. Our own pauses clear wantPlay first, a video that has ended has its own handler below, and
+    // when a video fails to load Chrome pauses it too: that is the "error" handler's business (it retries), not this.
+    if (!live() || !s.wantPlay || v.ended || v.error) return;
+    s.wantPlay = false;
+    setBusy(s, false);
+    setState(s, "paused");
+  });
   v.addEventListener("canplaythrough", () => {
     if (isActive()) allowNeighbours();
   });
@@ -748,6 +757,9 @@ function pauseSlide(s) {
   if (s.video) {
     try {
       s.video.pause();
+      // Swiped away from: stop reading ahead. A paused video that may "preload" keeps downloading in the background, which
+      // takes the connection from the video now on screen. It carries on again if somebody swipes back to it (playSlide).
+      s.video.preload = "metadata";
     } catch (e) {
       /* nothing to pause */
     }
