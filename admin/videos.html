@@ -140,8 +140,8 @@
         <div class="v-more"><button type="button" id="video-more" class="btn-ghost-dark" hidden>Show older videos</button></div>
 
         <!-- Hidden on purpose: this box is for whoever built the site, not for the person adding videos.
-             It shows when the address ends in ?setup=1 (…/admin/videos.html?setup=1), or when something goes
-             wrong and a button in the storage box (or on a blocked upload) asks for it. -->
+             Only an address ending in ?setup=1 (…/admin/videos.html?setup=1) shows it; nothing else does, not
+             even when something goes wrong. That address also switches the page's messages to the technical wording. -->
         <details id="setup-box" class="v-setup" hidden>
           <summary><i data-lucide="settings" class="icon-sm"></i> Storage setup &amp; test</summary>
           <div class="v-setup-body">

@@ -88,7 +88,7 @@ Firebase console → Firestore Database → **Rules** → replace everything wit
 
 If the second-to-last line says the storage **hasn't been given permission to take uploads**, do step 6.
 
-The **Storage setup & test** box is hidden on purpose, so the person adding videos never sees it. It shows only with `?setup=1` on the end of the address, or by itself when something is wrong (the **Open storage setup** and **Show me how** buttons, and **Open the setup** on a blocked upload, all open it).
+The **Storage setup & test** box is hidden on purpose, so the person adding videos never sees it, not even when something goes wrong. It shows only with `?setup=1` on the end of the address, and that same address switches the page's messages from plain wording (what the client sees) to the full technical wording (which settings are missing, what to change in Vercel or Backblaze). If the client says “Video uploads aren't available right now”, open the page with `?setup=1` to see the real reason.
 
 ---
 
@@ -119,7 +119,7 @@ What the setup does and doesn't do:
 
 ## 7. If something goes wrong
 
-The page explains most problems itself. The usual ones:
+The page explains most problems itself. The usual ones (these are the messages you see with `?setup=1`; the client sees a plain “Video uploads aren't available right now…” instead):
 
 | What it says | What it means | What to do |
 |---|---|---|

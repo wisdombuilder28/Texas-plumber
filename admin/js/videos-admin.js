@@ -97,6 +97,19 @@ const editForm = $("edit-form");
 const toastEl = $("toast");
 const setupBox = $("setup-box");
 
+// Two audiences. The person adding videos (the client) always sees plain words and never the setup box. Whoever built the
+// site opens this page with ?setup=1 on the end of the address and gets the "Storage setup & test" box and the technical wording.
+const devMode = /[?&]setup(?:=|&|$)/.test(location.search);
+const ASK_HELP = "please let the person who looks after your website know";
+const CLIENT_STORAGE_DOWN = `Video uploads aren't available right now. Tap Check again in a minute. If it still doesn't work, ${ASK_HELP}.`;
+// Messages that come back from the server can name the website's settings (Vercel, Backblaze, STORAGE_…). Only whoever built
+// the site (?setup=1) reads those; everyone else gets the plain fallback in their place.
+const TECHNICAL_WORDS = /Vercel|Backblaze|STORAGE_|FIREBASE_|B2_SETUP|service account|redeploy|bucket|CORS|Firestore|Firebase|environment variable|\.json\b/i;
+function plainServerText(text, fallback) {
+  const t = String(text || "").trim();
+  return !t || (!devMode && TECHNICAL_WORDS.test(t)) ? fallback : t;
+}
+
 // ---------- Small helpers ----------
 function el(tag, props, ...kids) {
   const node = document.createElement(tag);
@@ -194,7 +207,9 @@ toastEl.addEventListener("click", () => {
 function friendlyError(error) {
   switch (error?.code) {
     case "permission-denied":
-      return "the server refused it. Sign out and back in; if it keeps happening, this account isn't listed as an admin in Firebase, or the video rules haven't been published yet.";
+      return devMode
+        ? "the server refused it. Sign out and back in; if it keeps happening, this account isn't listed as an admin in Firebase, or the video rules haven't been published yet."
+        : `the server refused it. Sign out and back in, then try again. If it keeps happening, ${ASK_HELP}.`;
     case "unauthenticated":
       return "you've been signed out. Refresh the page and log in again.";
     case "unavailable":
@@ -202,9 +217,9 @@ function friendlyError(error) {
     case "client-timeout":
       return "network problem. Check your connection and try again.";
     case "resource-exhausted":
-      return "Firebase's free daily limit has been reached. Try again later.";
+      return devMode ? "Firebase's free daily limit has been reached. Try again later." : "the website has reached its daily limit. Try again tomorrow.";
     case "invalid-argument":
-      return "Firebase rejected the data.";
+      return devMode ? "Firebase rejected the data." : `the website couldn't accept that. Try again. If it keeps happening, ${ASK_HELP}.`;
     default:
       return error?.code ? `something went wrong (${error.code}). Try again.` : "something went wrong. Try again.";
   }
@@ -297,16 +312,17 @@ async function loadStatus() {
   }
 }
 
-// The "Storage setup & test" box is kept out of sight (it is for whoever built the site). Whatever needs it calls
-// this: the buttons in the storage box, "Open the setup" on a blocked upload, and an address ending in ?setup=1.
+// The "Storage setup & test" box is for whoever built the site, so everyone else never sees it, even when something goes
+// wrong: only an address ending in ?setup=1 shows it, and only then do the buttons that scroll to it exist.
 function openSetup() {
+  if (!devMode) return;
   setupBox.hidden = false;
   setupBox.open = true;
   setupBox.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// Notes that belong under the storage box whatever state it is in: opened from the wrong address, and the
-// temporary Backblaze master key still sitting in Vercel after the one-time setup.
+// Notes that belong under the storage box whatever state it is in: opened from the wrong address, and (for whoever
+// built the site, ?setup=1 only) the temporary Backblaze master key still sitting in Vercel after the one-time setup.
 function flagNotes() {
   const notes = [];
   if (!status) return notes;
@@ -317,7 +333,7 @@ function flagNotes() {
       el("p", { class: "v-meter-note v-flag", role: "alert" }, document.createTextNode(`This page is open at ${here}, but videos can only be uploaded from ${origins.join(" or ")}. Open the admin from that address to add videos.`))
     );
   }
-  if (status.setup && status.setup.keysPresent) {
+  if (devMode && status.setup && status.setup.keysPresent) {
     notes.push(
       el(
         "p",
@@ -334,6 +350,7 @@ function renderStorage() {
   storageBox.className = "v-storage";
   const again = () => el("button", { type: "button", class: "btn-ghost-dark", text: "Check again", onclick: loadStatus });
   const setup = () => el("button", { type: "button", class: "btn-ghost-dark", text: "Open storage setup", onclick: openSetup });
+  const actions = () => el("div", { class: "v-storage-actions" }, ...(devMode ? [setup(), again()] : [again()]));
 
   if (statusLoading && !status) {
     storageBox.replaceChildren(document.createTextNode("Checking the video storage…"));
@@ -341,7 +358,8 @@ function renderStorage() {
   }
   if (statusError) {
     storageBox.classList.add("is-error");
-    storageBox.replaceChildren(el("p", { text: `Couldn't check the video storage: ${statusError}` }), el("div", { class: "v-storage-actions" }, again()));
+    const reason = plainServerText(statusError, "");
+    storageBox.replaceChildren(el("p", { text: reason ? `Couldn't check the video storage: ${reason}` : CLIENT_STORAGE_DOWN }), el("div", { class: "v-storage-actions" }, again()));
     return;
   }
   if (!status) {
@@ -352,18 +370,18 @@ function renderStorage() {
     storageBox.classList.add("is-error");
     const missing = (status.missing || []).length ? ` These settings are missing in Vercel: ${status.missing.join(", ")}.` : "";
     storageBox.replaceChildren(
-      el("p", { text: `Video storage isn't set up yet.${missing}${status.problem ? ` ${status.problem}` : ""}` }),
+      el("p", { text: devMode ? `Video storage isn't set up yet.${missing}${status.problem ? ` ${status.problem}` : ""}` : CLIENT_STORAGE_DOWN }),
       ...flagNotes(),
-      el("div", { class: "v-storage-actions" }, setup(), again())
+      actions()
     );
     return;
   }
   if (!status.storageOk) {
     storageBox.classList.add("is-error");
     storageBox.replaceChildren(
-      el("p", { text: status.problem || "The website can't reach the video storage right now." }),
+      el("p", { text: devMode ? status.problem || "The website can't reach the video storage right now." : CLIENT_STORAGE_DOWN }),
       ...flagNotes(),
-      el("div", { class: "v-storage-actions" }, setup(), again())
+      actions()
     );
     return;
   }
@@ -765,25 +783,32 @@ function uploadMessage(e) {
       if (e.unreachable) return "This phone can't reach the storage right now. Check your signal, switch between Wi-Fi and mobile data, turn off any VPN or ad-blocker, then tap Try again. What was already sent is kept.";
       return "Lost the connection. What was already sent is kept. Tap Try again when your signal is back.";
     case "blocked":
-      return `${e.message} That's the one-time “upload permission” step: tap “Open the setup”, follow step 2, then come back here and tap Try again. Your video is kept, nothing to redo.`;
+      return devMode
+        ? `${e.message} That's the one-time “upload permission” step: tap “Open the setup”, follow step 2, then come back here and tap Try again. Your video is kept, nothing to redo.`
+        : `Uploading isn't available right now. Your video is kept, so there's nothing to redo. Please let the person who looks after your website know, then tap Try again.`;
     case "wrong_address":
-      return e.message;
+      // the part in brackets (what to change in Vercel) is for whoever built the site
+      return devMode ? e.message : e.message.replace(/\s*\(If [^)]*STORAGE_CORS_ORIGINS[^)]*\)\s*$/, "");
     case "file_unreadable":
       return "This phone couldn't read the video file any more (it may have been moved or deleted, or the app lost access to it). Tap Remove, then pick the video again.";
     case "stalled":
       return "The connection stopped moving. What was already sent is kept. Tap Try again.";
     case "link_rejected":
-      return "The storage refused the upload link. Open “Storage setup & test” at the bottom of this page and run the test.";
+      return devMode
+        ? "The storage refused the upload link. Open “Storage setup & test” at the bottom of this page and run the test."
+        : `The storage didn't accept the upload. Tap Try again. If it keeps happening, ${ASK_HELP}.`;
     case "upload_gone":
       return "That upload expired, so it will start fresh. Tap Try again.";
     case "storage_busy":
       return "The storage is busy right now. Wait a minute, then tap Try again.";
     case "storage_refused":
-      return `The storage refused the video (error ${e.status || "?"}). Open “Storage setup & test” at the bottom of this page and run the test.`;
+      return devMode
+        ? `The storage refused the video (error ${e.status || "?"}). Open “Storage setup & test” at the bottom of this page and run the test.`
+        : `The storage didn't accept the video. Tap Try again. If it keeps happening, ${ASK_HELP}.`;
     case "incomplete":
       return "The storage didn't get the whole video. Tap Try again.";
     default:
-      return e.message || "The upload didn't finish. Tap Try again.";
+      return plainServerText(e.message, `The upload didn't finish. Tap Try again. If it keeps happening, ${ASK_HELP}.`);
   }
 }
 function explain(e) {
@@ -1134,7 +1159,7 @@ function handleUploadError(j, error) {
     text: wasSaving ? `The video is uploaded, but saving it to the list failed: ${friendlyError(error)}` : explain(error),
     detail: wasSaving ? (error && error.code ? `Firebase said: ${error.code}` : "") : explainDetail(error),
   };
-  if (!wasSaving && error instanceof UploadError && error.code === "blocked") j.error.action = { label: "Open the setup", run: openSetup };
+  if (!wasSaving && error instanceof UploadError && error.code === "blocked" && devMode) j.error.action = { label: "Open the setup", run: openSetup };
   renderJob();
 }
 
@@ -1320,7 +1345,9 @@ function onVideos(snapshot) {
 // Why the list couldn't be read. "permission-denied" almost always means the new Firestore rules haven't been published yet.
 function listErrorText(error) {
   if (error && error.code === "permission-denied") {
-    return "Firebase isn't letting this page read the video list yet. In Firebase, open Firestore Database → Rules, paste in the new firestore.rules file and tap Publish. Then refresh this page.";
+    return devMode
+      ? "Firebase isn't letting this page read the video list yet. In Firebase, open Firestore Database → Rules, paste in the new firestore.rules file and tap Publish. Then refresh this page."
+      : `The video list can't be shown right now. Please refresh the page. If it still doesn't show, ${ASK_HELP}.`;
   }
   return "Couldn't load the videos. Check your connection, then refresh this page.";
 }
@@ -1363,7 +1390,7 @@ async function openPlayer(id) {
     playerVideo.play().catch(() => {});
   } catch (error) {
     if (seq !== playerSeq) return;
-    playerCaption.textContent = `Couldn't load this video: ${error.message || "try again in a moment."}`;
+    playerCaption.textContent = `Couldn't load this video: ${plainServerText(error.message, "try again in a moment.")}`;
   }
 }
 function closePlayer() {
@@ -1463,7 +1490,7 @@ async function deleteVideo(id) {
     loadStatus();
   } catch (error) {
     console.error("Delete failed:", error);
-    toast(`Couldn't delete that video: ${error instanceof UploadError ? error.message : friendlyError(error)}`, "error");
+    toast(`Couldn't delete that video: ${error instanceof UploadError ? plainServerText(error.message, `the website couldn't reach the video storage. Try again in a minute. If it keeps happening, ${ASK_HELP}.`) : friendlyError(error)}`, "error");
   } finally {
     deleting.delete(id);
     const again = cards.get(id);
@@ -1595,7 +1622,7 @@ setupBtn.addEventListener("click", async () => {
 
 // ---------- Start ----------
 // …/admin/videos.html?setup=1 shows the "Storage setup & test" box for whoever built the site; otherwise it stays hidden.
-if (/[?&]setup(?:=|&|$)/.test(location.search)) setupBox.hidden = false;
+if (devMode) setupBox.hidden = false;
 updatePick();
 renderStorage();
 requireAuth((user) => {
