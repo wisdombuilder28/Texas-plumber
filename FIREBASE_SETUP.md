@@ -24,7 +24,7 @@ Storage now has.
 ### 3. Turn on Email/Password sign-in
 1. Build → Authentication → Get started.
 2. Sign-in method tab → Email/Password → Enable → Save.
-3. On the same tab, also enable **Anonymous**. The public "Recent Work" like buttons use a silent anonymous session so each visitor can like a photo once. If this is off, likes fail even though the rest of the site works.
+3. On the same tab, also enable **Anonymous**. The like buttons on the Recent Work → Images page use a silent anonymous session so each visitor can like a photo once. If this is off, likes fail even though the rest of the site works.
 
 ### 4. Create the one admin account
 1. Authentication → Users tab → Add user.
@@ -67,7 +67,7 @@ This wires up the four numbers on the Overview page: Total Visitors, Visitors To
 4. Copy the **Measurement ID** (looks like `G-XXXXXXXXXX`).
 
 ### 2. Add the Measurement ID to the site
-The Measurement ID is already set to `G-9LBTZMCXGV` on every public page. If you create a new GA4 property, replace **both** `G-9LBTZMCXGV` occurrences in each public HTML file (`index.html`, `about.html`, `contact.html`, `services.html`, `why-us.html`, `who-we-serve.html`, `work.html`).
+The Measurement ID is already set to `G-9LBTZMCXGV` on every public page. If you create a new GA4 property, replace **both** `G-9LBTZMCXGV` occurrences in each public HTML file (`index.html`, `about.html`, `contact.html`, `services.html`, `why-us.html`, `who-we-serve.html`, `work-images.html`, `work-videos.html`). (`work.html` is only a small redirect to the Images page and has no analytics tag.)
 
 ### 3. Get the Property ID
 Admin → Property Settings (top of the property column) → copy the **Property ID** — a plain number like `123456789`. This is different from the Measurement ID (`G-...`) and is what the server needs. Putting the G- ID here is a common reason the dashboard stays empty.

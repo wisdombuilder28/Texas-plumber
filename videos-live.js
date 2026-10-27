@@ -1,5 +1,5 @@
 // videos-live.js
-// Shows the videos on the Recent Work page (work.html).
+// Shows the videos on the Recent Work: Videos page (work-videos.html).
 //
 // The list comes from the `videos` collection in Firestore (written by the admin Videos page).
 // The video files themselves sit in a private storage bucket, so this page never holds a permanent
@@ -18,8 +18,8 @@
 // player fetches them by itself when you swipe near the end).
 //
 // Everything on screen is built with createElement / textContent, so a title or description is never
-// read as HTML. If the list can't be loaded (offline, rules not published yet) or is empty, the whole
-// video section simply stays hidden and the rest of the page looks exactly as it did before.
+// read as HTML. While the list loads the page says "Loading videos…". If the list is empty it says so, and if it
+// can't be loaded (offline, rules not published yet) it says that too, with a "Try again" button.
 import { db } from "./firebase-config.js";
 import {
   collection,
@@ -55,7 +55,9 @@ const section = $("videos");
 const listEl = $("video-list");
 const tabsEl = $("video-filter");
 const moreBtn = $("video-more");
-const jumpEl = $("video-jump");
+const statusEl = $("video-status"); //   "Loading…" / "No videos yet" / "Couldn't load" (the page still works without it)
+const statusText = $("video-status-text");
+const retryBtn = $("video-retry");
 const viewer = $("vid-viewer");
 const trackEl = $("vid-track");
 const closeBtn = $("vid-close");
@@ -76,6 +78,7 @@ let loadedOnce = false;
 let moreFailed = false;
 let activeFilter = "all";
 let tabSignature = null;
+let phase = "loading"; // the first load of the list: loading | ready | failed
 
 // ---------- small helpers ----------
 function el(tag, className, text) {
@@ -241,6 +244,23 @@ function setFilter(key) {
   paint();
 }
 
+// What the page says when there is no list to show yet: still loading, nothing posted, or it couldn't be loaded.
+function paintStatus(any) {
+  if (!statusEl) return;
+  statusEl.hidden = any;
+  if (any) return;
+  if (statusText) {
+    statusText.dataset.phase = phase; // work-videos.html has a safety-net timer that only speaks while this says "loading"
+    statusText.textContent =
+      phase === "loading"
+        ? "Loading videos…"
+        : phase === "failed"
+          ? "Couldn't load the videos right now. Please check your connection and try again."
+          : "No videos yet — check back soon.";
+  }
+  if (retryBtn) retryBtn.hidden = phase !== "failed";
+}
+
 function paint() {
   renderTabs();
   items.forEach((it) => {
@@ -248,7 +268,7 @@ function paint() {
   });
   const any = items.length > 0;
   section.hidden = !any;
-  if (jumpEl) jumpEl.hidden = !any;
+  paintStatus(any);
   moreBtn.hidden = !hasMore;
   moreBtn.disabled = loading;
   moreBtn.textContent = loading ? "Loading…" : moreFailed ? "Couldn't load more. Tap to try again" : "Show more videos";
@@ -1072,16 +1092,30 @@ function wireViewer() {
 }
 
 // ---------- start ----------
-async function start() {
-  wireViewer();
-  moreBtn.addEventListener("click", () => loadPage());
+// The first page of the list: tries, waits and tries again (twice more) before saying it couldn't load.
+async function loadFirstPage() {
+  phase = "loading";
+  paint();
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length && !loadedOnce; attempt += 1) {
     if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
     await loadPage();
   }
+  phase = loadedOnce ? "ready" : "failed";
+  paint();
 }
 
-// If work.html is an older copy without the video section, there is nothing to do.
+function start() {
+  wireViewer();
+  moreBtn.addEventListener("click", () => loadPage());
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => {
+      if (phase === "failed") loadFirstPage();
+    });
+  }
+  loadFirstPage();
+}
+
+// If the page is an older copy without the video list or the player, there is nothing to do.
 if (
   section && listEl && tabsEl && moreBtn && viewer && trackEl && closeBtn && countEl && prevBtn && nextBtn &&
   seekEl && timeEl && totalEl && speedBtn && muteBtn

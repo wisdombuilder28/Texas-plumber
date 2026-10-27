@@ -157,6 +157,112 @@ body.nav-open .contact-fab{visibility:hidden;pointer-events:none;} /* no floatin
   .mobile-nav.open nav>a:not(.btn-accent),.mobile-nav.open .contact-choice{animation:none;}
 }
 
+/* ---------- Recent Work dropdown: Images / Videos ----------
+   Desktop (the nav row, 1440px and up): a white card under the "Recent Work" button.
+   Phones and tablets: an expanding group inside the dark mobile menu (nav.js opens and closes both).
+   The icons are masks, so they take the colour of the text around them. */
+:root{--ico-chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");}
+.nav-ico-image{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E");}
+.nav-ico-play{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolygon points='10 8 16 12 10 16 10 8'/%3E%3C/svg%3E");}
+
+/* desktop: the button looks like its neighbours in the nav row, plus a small arrow.
+   The arrow sits inside the button's own padding (6.4px + 17.6px = the 12px + 12px of the other links), so the
+   nav row is exactly as wide as before: the header was sized to fit at 1440px and has no room to spare. */
+.nav-dd{position:relative;display:flex;}
+.nav-desktop .nav-dd-btn{
+  position:relative;display:inline-flex;align-items:center;white-space:nowrap;
+  padding:.5rem 1.1rem .5rem .4rem;border-radius:.375rem;
+  font-size:calc(.875rem * var(--ts));font-weight:500;color:rgba(0,0,0,.72);
+  transition:color .15s ease,background .15s ease;
+}
+.nav-dd-btn::after{
+  content:"";position:absolute;right:.3rem;top:50%;width:.6rem;height:.6rem;margin-top:-.3rem;
+  background:currentColor;opacity:.75;
+  -webkit-mask:var(--ico-chev) center/contain no-repeat;mask:var(--ico-chev) center/contain no-repeat;
+  transition:transform .2s ease,opacity .15s ease;
+}
+.nav-desktop .nav-dd-btn:hover,.nav-dd.is-open .nav-dd-btn{background:var(--secondary);color:var(--primary);}
+.nav-dd.is-open .nav-dd-btn::after{transform:rotate(180deg);opacity:1;}
+.nav-dd.is-current .nav-dd-btn{color:var(--primary);} /* you are on Images or Videos */
+.nav-dd-menu{
+  position:absolute;top:calc(100% + .55rem);left:50%;z-index:50;width:17.5rem;
+  display:flex;flex-direction:column;gap:.15rem;padding:.4rem;border-radius:1rem;
+  background:var(--card);border:1px solid var(--border);
+  box-shadow:0 18px 40px -14px oklch(0.1 0.006 260 / .35);
+  opacity:0;visibility:hidden;transform:translate(-50%,-.4rem);
+  transition:opacity .16s ease,transform .2s cubic-bezier(.22,1,.36,1),visibility 0s .2s;
+}
+.nav-dd.is-open .nav-dd-menu{opacity:1;visibility:visible;transform:translate(-50%,0);transition-delay:0s;}
+.nav-desktop .nav-dd-link{
+  display:flex;align-items:center;gap:.8rem;white-space:normal;
+  padding:.6rem .65rem;border-radius:.7rem;color:var(--primary);
+}
+.nav-desktop .nav-dd-link:hover,.nav-desktop .nav-dd-link:focus-visible{background:var(--secondary);color:var(--primary);}
+.nav-desktop .nav-dd-link:focus-visible{outline:2px solid var(--brand-gold);outline-offset:-2px;}
+.nav-dd-ico{
+  flex:none;display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:.65rem;
+  background:var(--secondary);color:var(--brand-black);transition:background .15s ease;
+}
+.nav-dd-ico::before{
+  content:"";width:1.2rem;height:1.2rem;background:currentColor;
+  -webkit-mask:var(--ico) center/contain no-repeat;mask:var(--ico) center/contain no-repeat;
+}
+.nav-desktop .nav-dd-link:hover .nav-dd-ico,
+.nav-desktop .nav-dd-link:focus-visible .nav-dd-ico,
+.nav-desktop .nav-dd-link[aria-current="page"] .nav-dd-ico{background:var(--brand-gold);}
+.nav-dd-txt{display:flex;flex-direction:column;gap:.1rem;min-width:0;}
+.nav-dd-txt strong{font-size:calc(.92rem * var(--ts));font-weight:700;line-height:1.25;color:var(--brand-black);}
+.nav-dd-txt small{font-size:calc(.78rem * var(--ts));font-weight:500;line-height:1.3;color:var(--muted-foreground);}
+
+/* phones and tablets: "Recent Work" is a row of the mobile menu that opens in place to show Images and Videos */
+.mnav-dd{border-radius:.8rem;transition:background .2s ease;}
+.mnav-dd.is-open{background:rgba(255,255,255,.05);}
+.mnav-dd-btn{
+  position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;
+  min-height:3.25rem;padding:0 .9rem;border-radius:.8rem;text-align:left;
+  font-size:calc(1.1rem * var(--ts));font-weight:600;color:rgba(255,255,255,.86);
+  transition:background .15s ease,color .15s ease;
+}
+.mnav-dd-btn::after{
+  content:"";flex:none;width:1.1rem;height:1.1rem;background:currentColor;opacity:.4;
+  -webkit-mask:var(--ico-chev) center/contain no-repeat;mask:var(--ico-chev) center/contain no-repeat;
+  transition:transform .22s ease,opacity .15s ease;
+}
+.mnav-dd-btn:hover,.mnav-dd-btn:active{background:rgba(255,255,255,.07);color:#fff;}
+.mnav-dd-btn:focus-visible{outline:2px solid var(--brand-gold);outline-offset:-2px;}
+.mnav-dd.is-open .mnav-dd-btn{color:#fff;}
+.mnav-dd.is-open .mnav-dd-btn::after{transform:rotate(180deg);opacity:.9;}
+.mnav-dd.is-current .mnav-dd-btn{color:var(--brand-gold);} /* you are on Images or Videos */
+.mnav-dd.is-current .mnav-dd-btn::before{content:"";position:absolute;left:0;top:.85rem;bottom:.85rem;width:3px;border-radius:3px;background:var(--brand-gold);}
+/* the rows slide open with the grid-rows trick: 0fr -> 1fr animates to the content's real height */
+.mnav-dd-panel{
+  display:grid;grid-template-rows:0fr;visibility:hidden;
+  transition:grid-template-rows .26s cubic-bezier(.22,1,.36,1),visibility 0s .26s;
+}
+.mnav-dd.is-open .mnav-dd-panel{grid-template-rows:1fr;visibility:visible;transition-delay:0s;}
+.mnav-dd-inner{min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:.125rem;}
+.mnav-dd-link{
+  position:relative;display:flex;align-items:center;gap:.8rem;min-height:3rem;
+  margin:0 .4rem 0 .9rem;padding:0 .65rem;border-radius:.65rem;
+  font-size:calc(1.02rem * var(--ts));font-weight:600;color:rgba(255,255,255,.82);text-decoration:none;
+  transition:background .15s ease,color .15s ease;
+}
+.mnav-dd-inner>.mnav-dd-link:last-child{margin-bottom:.4rem;}
+.mnav-dd-link:hover,.mnav-dd-link:active{background:rgba(255,255,255,.08);color:#fff;}
+.mnav-dd-link:focus-visible{outline:2px solid var(--brand-gold);outline-offset:-2px;}
+.mnav-dd-link[aria-current="page"]{background:rgba(255,255,255,.06);color:var(--brand-gold);}
+.mnav-ico{flex:none;display:grid;place-items:center;width:2rem;height:2rem;border-radius:.55rem;background:rgba(255,255,255,.08);color:#fff;}
+.mnav-ico::before{
+  content:"";width:1.05rem;height:1.05rem;background:currentColor;
+  -webkit-mask:var(--ico) center/contain no-repeat;mask:var(--ico) center/contain no-repeat;
+}
+.mnav-dd-link[aria-current="page"] .mnav-ico{background:var(--brand-gold);color:var(--brand-black);}
+.mobile-nav.open nav>.mnav-dd{animation:navRowIn .3s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i,8) * 30ms + 50ms);}
+@media(prefers-reduced-motion:reduce){
+  .nav-dd-menu,.nav-dd-btn::after,.mnav-dd,.mnav-dd-btn::after,.mnav-dd-panel{transition:none;}
+  .mobile-nav.open nav>.mnav-dd{animation:none;}
+}
+
 @media(min-width:768px){
   .header-cta-compact{display:inline-flex;}
 }
@@ -550,6 +656,16 @@ body.nav-open .contact-fab{visibility:hidden;pointer-events:none;} /* no floatin
 .work-filter-btn.is-active{
   background:var(--brand-black);color:#fff;border-color:var(--brand-black);
 }
+/* link to the other half of Recent Work (Images <-> Videos), under the page intro */
+.work-cross-row{margin-top:1.1rem;}
+.work-cross{
+  display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .95rem;border-radius:999px;
+  border:1px solid var(--border);background:#fff;color:var(--brand-black);
+  font-size:calc(.85rem * var(--ts));font-weight:700;transition:border-color .15s ease;
+}
+.work-cross:hover{border-color:var(--brand-gold);}
+.work-cross svg{flex:none;width:1rem;height:1rem;fill:none;stroke:var(--brand-gold);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.work-cross svg.is-solid{fill:var(--brand-gold);}
 .work-cat-sep{opacity:.45;margin:0 .15rem;}
 .work-item-label .dot{width:5px;height:5px;border-radius:50%;background:var(--brand-gold);flex-shrink:0;}
 .work-item-caption{
@@ -575,6 +691,7 @@ body.nav-open .contact-fab{visibility:hidden;pointer-events:none;} /* no floatin
 .like-btn.is-loading .like-count{opacity:.4;animation:like-pulse 1.3s ease-in-out infinite;}
 @keyframes like-pulse{0%,100%{opacity:.3;}50%{opacity:.75;}}
 .empty-note{text-align:center;color:var(--muted-foreground);padding:3.5rem 1rem;font-size:calc(.95rem * var(--ts));margin-top:2rem;border:1px dashed var(--border);border-radius:1rem;}
+.empty-note .work-filter-btn{margin-top:1rem;}
 
 /* Motion — professional, noticeable, replayed after first paint */
 html{scroll-behavior:smooth;}

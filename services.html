@@ -29,7 +29,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
-<link rel="stylesheet" href="styles.css?v=17" />
+<link rel="stylesheet" href="styles.css?v=18" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Plumber","name":"N.D. Flow Plumbing Co.","telephone":"+234-901-683-6967","priceRange":"$$","address":{"@type":"PostalAddress","addressCountry":"NG"},"areaServed":["Nigeria","Worldwide"],"openingHours":"Mo-Su 00:00-23:59","sameAs":["https://instagram.com/n.d.flow_plumbing_co","https://tiktok.com/@n.d.flow_plumbing_co"]}
 </script>
@@ -59,7 +59,19 @@
       <a href="/why-us.html">Why Us</a>
       <a href="/about.html">About</a>
       <a href="/#gallery">Gallery</a>
-      <a href="/work.html">Recent Work</a>
+      <div class="nav-dd">
+        <button type="button" class="nav-dd-btn" aria-expanded="false" aria-controls="nav-work-menu">Recent Work</button>
+        <div class="nav-dd-menu" id="nav-work-menu">
+          <a class="nav-dd-link" href="/work-images.html">
+            <span class="nav-dd-ico nav-ico-image" aria-hidden="true"></span>
+            <span class="nav-dd-txt"><strong>Images</strong><small>Project photos</small></span>
+          </a>
+          <a class="nav-dd-link" href="/work-videos.html">
+            <span class="nav-dd-ico nav-ico-play" aria-hidden="true"></span>
+            <span class="nav-dd-txt"><strong>Videos</strong><small>Showcases &amp; testimonials</small></span>
+          </a>
+        </div>
+      </div>
       <a href="/#reviews">Reviews</a>
       <a href="/who-we-serve.html">Who We Serve</a>
       <a href="/contact.html">Contact</a>
@@ -78,7 +90,15 @@
       <a href="/why-us.html">Why Us</a>
       <a href="/about.html">About</a>
       <a href="/#gallery">Gallery</a>
-      <a href="/work.html">Recent Work</a>
+      <div class="mnav-dd">
+        <button type="button" class="mnav-dd-btn" aria-expanded="false" aria-controls="mnav-work-panel">Recent Work</button>
+        <div class="mnav-dd-panel" id="mnav-work-panel">
+          <div class="mnav-dd-inner">
+            <a class="mnav-dd-link" href="/work-images.html"><span class="mnav-ico nav-ico-image" aria-hidden="true"></span>Images</a>
+            <a class="mnav-dd-link" href="/work-videos.html"><span class="mnav-ico nav-ico-play" aria-hidden="true"></span>Videos</a>
+          </div>
+        </div>
+      </div>
       <a href="/#reviews">Reviews</a>
       <a href="/who-we-serve.html">Who We Serve</a>
       <a href="/contact.html">Contact</a>
@@ -130,7 +150,8 @@
         <li><a href="/about.html">About</a></li>
         <li><a href="/why-us.html">Why Us</a></li>
         <li><a href="/#gallery">Gallery</a></li>
-        <li><a href="/work.html">Recent Work</a></li>
+        <li><a href="/work-images.html">Recent Work: Images</a></li>
+        <li><a href="/work-videos.html">Recent Work: Videos</a></li>
         <li><a href="/#reviews">Reviews</a></li>
         <li><a href="/who-we-serve.html">Who We Serve</a></li>
               <li><a href="/contact.html">Contact</a></li>
@@ -158,6 +179,6 @@
 <script src="script.js"></script>
 <script src="/motion.js?v=12"></script>
 <script src="/pwa.js"></script>
-<script src="/nav.js?v=17"></script>
+<script src="/nav.js?v=18"></script>
 </body>
 </html>

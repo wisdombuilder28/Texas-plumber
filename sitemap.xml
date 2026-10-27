@@ -31,7 +31,12 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nd-flow-plumbing.vercel.app/work.html</loc>
+    <loc>https://nd-flow-plumbing.vercel.app/work-images.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://nd-flow-plumbing.vercel.app/work-videos.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

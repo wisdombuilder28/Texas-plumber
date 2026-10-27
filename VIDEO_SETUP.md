@@ -3,7 +3,7 @@
 About 15 minutes, all in a browser, all from your phone. No bank card, no PayPal.
 
 What you get: a **Videos** page in the admin. You pick a video from the phone, it is made smaller on the
-phone, uploaded to a **private** Backblaze bucket (free 10 GB), and shown on **Recent Work**.
+phone, uploaded to a **private** Backblaze bucket (free 10 GB), and shown on **Recent Work → Videos**.
 
 > **Always open the admin at `https://nd-flow-plumbing.vercel.app/admin`.**
 > The storage is set up to accept uploads from that exact address and no other. Vercel's “Visit” button opens a
@@ -14,14 +14,14 @@ phone, uploaded to a **private** Backblaze bucket (free 10 GB), and shown on **R
 
 ## 1. The files
 
-Project root = the folder that has `work.html` in it.
+Project root = the folder that has `work-videos.html` in it.
 
 | File | Where it goes |
 |---|---|
 | `api/videos.js` | `api/` folder (next to `analytics.js`) |
 | `admin/videos.html`, `admin/videos.css` | `admin/` folder |
 | `admin/js/videos-admin.js`, `video-upload.js`, `video-engine.bundle.js` | `admin/js/` folder (the bundle is big, about 450 KB, that's normal) |
-| `videos-live.js`, `work-videos.css`, `work.html` | project root (the public Recent Work page) |
+| `videos-live.js`, `work-videos.css`, `work-videos.html` | project root (the public Recent Work: Videos page) |
 | `vercel.json`, `firestore.rules` | project root |
 
 Push to GitHub as usual.
@@ -155,7 +155,7 @@ Tick these once. They are what keeps the videos, the storage and the admin safe.
 
 Good to know:
 
-- **Who can do what.** Only someone signed in as the admin (checked on the server, against the `admins` list) can upload or delete. Anyone can *watch* a video on Recent Work: when someone presses play, the server hands out a temporary link (valid for hours). That is by design.
+- **Who can do what.** Only someone signed in as the admin (checked on the server, against the `admins` list) can upload or delete. Anyone can *watch* a video on Recent Work → Videos: when someone presses play, the server hands out a temporary link (valid for hours). That is by design.
 - **Keys are 24 random characters** and are never listed publicly, but a link that was shared can be opened by whoever has it until it expires. Videos you don't want public shouldn't be posted.
 - **The service account** in `FIREBASE_SERVICE_ACCOUNT_JSON` is powerful if it is the default Firebase one. Keeping it Production-only and Secret is the main protection. For extra care, create a separate service account with only “Cloud Datastore Viewer” and GA4 “Viewer”.
 
@@ -195,6 +195,6 @@ A phone that visited before gets the newest version of the site on its next visi
 - **Limits.** Each video can be up to 12 minutes and 400 MB *after* shrinking. The original on the phone can be up to 4 GB.
 - **Picture sizes.** Phones' video encoders like sizes that are a multiple of 16, so the smaller copy is rounded to that (for example 854×480 becomes 848×480). Nobody can see the difference.
 - **If the phone's MP4 encoder fails**, the page says “Trying another way…” and makes a WebM copy instead. WebM plays in Chrome, Edge, Firefox and on Android; some older iPhones may not play it.
-- **The video player (Recent Work page).** Tapping a video opens it full screen. Swipe left or right (or use the arrow keys / on-screen arrows on a computer) to play the next or previous video; tap the video to pause. The title and description sit over the bottom of the picture, and long descriptions open with **Read more**. The player only loads the video on screen and the one next to it, and starts loading the next one after the current one is playing smoothly, so a slow connection is never shared between two videos.
+- **The video player (Recent Work → Videos page).** Tapping a video opens it full screen. Swipe left or right (or use the arrow keys / on-screen arrows on a computer) to play the next or previous video; tap the video to pause. The title and description sit over the bottom of the picture, and long descriptions open with **Read more**. The player only loads the video on screen and the one next to it, and starts loading the next one after the current one is playing smoothly, so a slow connection is never shared between two videos.
 - **How fast a video starts.** The page asks for each play link before the tap, shows the cover picture instantly and starts the video the moment the link is in hand. After that the speed is the visitor's connection to Backblaze, and the file size matters most: **Smaller** quality (or 480p) starts noticeably faster on a weak connection than 720p / 1080p. Videos shrunk on the Videos page are saved with their index at the front of the file, which lets them start before they have fully downloaded; a video uploaded with the "as is" option keeps whatever layout the phone gave it.
 - **Whose account.** The videos sit in the Backblaze account you create here. If the client later wants it moved to his own account, it's the same settings in Vercel (existing videos would have to be moved across).
