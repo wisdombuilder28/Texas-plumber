@@ -54,6 +54,8 @@ Sign in with the email/password from step 4. You should land on the Overview pag
 
 The stat cards on Overview will say "Not connected yet" until you finish Part 2 below — that's expected, not broken.
 
+**Staying signed in.** Once you've signed in on a device you stay signed in there until you press **Log out** (or clear the browser's site data). After that, tapping **Admin** in the footer, or triple-tapping the logo, takes you straight to the dashboard after a second or two of "Signing you in…". The sign-in form only appears when nobody is signed in. How it works: `admin/login.html` and `admin/js/login.js` decide what the page shows, and `admin/js/admin-hint.js` keeps a small "an admin is signed in on this browser" note so the Admin link can skip the form. The note is only a shortcut and grants nothing; Firebase Auth and the `admins` collection are still the real check.
+
 ---
 
 ## Part 2 — Analytics (GA4)

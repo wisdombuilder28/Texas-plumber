@@ -156,12 +156,18 @@ function paintList() {
 // Returns a UID, signing in anonymously if needed. Safe to call from a tap
 // handler even if the background sign-in below never completed -- this is
 // the retry path, not just a one-shot attempt made silently on page load.
+//
+// It waits for Firebase to finish restoring any saved login first, and uses whoever is signed in. That
+// matters because signInAnonymously() only reuses an *anonymous* user: for anyone else (the admin) it
+// starts a brand-new anonymous session in their place. Asking too early -- say a like tapped the moment the
+// page opens -- would silently sign the admin out, and the next tap on "Admin" would ask for the password.
 function ensureSignedIn() {
   if (currentUid) return Promise.resolve(currentUid);
   if (!signInPromise) {
-    signInPromise = signInAnonymously(auth)
-      .then((result) => {
-        currentUid = result.user.uid;
+    signInPromise = Promise.resolve(auth.authStateReady && auth.authStateReady())
+      .then(() => auth.currentUser || signInAnonymously(auth).then((result) => result.user))
+      .then((user) => {
+        currentUid = user.uid;
         return currentUid;
       })
       .catch((error) => {

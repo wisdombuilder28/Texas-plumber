@@ -1,10 +1,92 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-auth="checking">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Admin Sign In — N.D. Flow Plumbing Co.</title>
 <meta name="robots" content="noindex, nofollow" />
+<script>
+/* Admin entry gate. Runs before anything is drawn, so it sits above the stylesheets on purpose.
+
+   This page used to draw the sign-in form straight away and only moved a signed-in admin on once Firebase had
+   checked the saved login (a second or two, longer on slow data). So an admin who was already signed in still
+   saw the form, and could end up typing into it. Now:
+
+   1. This browser has a confirmed admin session (the note kept by admin/js/admin-hint.js) -> go straight to the
+      dashboard, which does the real check. This page is never drawn.
+   2. Otherwise the card says "Checking your session…" and admin/js/login.js decides: signed in -> dashboard,
+      signed out -> the form appears. The form is never shown to someone who is already signed in.
+
+   The note is only a shortcut for where to send you first; it grants nothing. If it is wrong, the dashboard clears
+   it and sends you back here, and the nd_admin_fp flag stops that from ever looping.
+   KEEP the two storage keys in sync with admin/js/admin-hint.js. */
+(function () {
+  var html = document.documentElement;
+
+  function note(text, kind) {
+    var box = document.getElementById("login-message");
+    if (!box) return;
+    box.textContent = text;
+    box.className = "form-message info";
+    if (kind) box.setAttribute("data-failsafe", kind); else box.removeAttribute("data-failsafe"); // login.js clears these once connected
+    box.hidden = false;
+  }
+
+  // The browser must never submit this form itself: with no action it would put the email AND password into the
+  // address bar. login.js does the real sign-in; if it hasn't loaded yet, say so instead of doing nothing.
+  document.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!window.ndLoginReady) note("Still connecting to the sign-in service. Wait a moment, then try again.");
+  }, true);
+
+  // Failsafe: on a very slow or broken connection don't leave the visitor on a spinner. If we are still on this page
+  // after 8 seconds (nothing decided, or the move to the dashboard is stuck), show the form with a note. If a
+  // signed-in session turns up later, login.js still moves you on to the dashboard.
+  setTimeout(function () {
+    var look = html.getAttribute("data-auth");
+    if (look !== "checking" && look !== "redirecting") return;
+    html.setAttribute("data-auth", "form");
+    if (window.ndLoginReady) note("This is taking longer than usual. You can sign in below.", "slow");
+    else note("Still connecting to the sign-in service. If this keeps up, check your connection and refresh the page.", "unreachable");
+  }, 8000);
+
+  try {
+    if (localStorage.getItem("nd_admin_hint") === "1" && !sessionStorage.getItem("nd_admin_fp")) {
+      sessionStorage.setItem("nd_admin_fp", "1"); // "already sent on once"; the dashboard clears it when it accepts you
+      html.setAttribute("data-auth", "redirecting");
+      location.replace("/admin/dashboard.html");
+      return;
+    }
+  } catch (e) {}
+
+  /* Below: only for the page that stays open. */
+
+  // Start downloading the sign-in code now, all at once, instead of one file at a time as each import is found.
+  [
+    "/admin/js/login.js",
+    "/admin/js/admin-hint.js",
+    "/firebase-config.js",
+    "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js",
+    "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js",
+    "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js"
+  ].forEach(function (href) {
+    var link = document.createElement("link");
+    link.rel = "modulepreload";
+    link.href = href;
+    document.head.appendChild(link);
+  });
+})();
+</script>
+<style>
+/* The sign-in page's three looks (data-auth on <html>). These rules are inline on purpose: "no form until we know
+   nobody is signed in" must hold even if admin.css is slow or fails to load. The rest of the look is in admin.css. */
+html[data-auth="checking"] .auth-panel,
+html[data-auth="redirecting"] .auth-panel{display:none}
+html[data-auth="form"] .auth-checking{display:none}
+html[data-auth="redirecting"] .t-check,
+html:not([data-auth="redirecting"]) .t-go{display:none}
+</style>
+<noscript><style>.auth-checking{display:none}</style></noscript>
 <link rel="icon" href="/assets/logo-mark.png" type="image/png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,33 +101,45 @@
       <img src="/assets/logo-mark.png" alt="" />
       <span>N.D. Flow<span class="dot">.</span><small>ADMIN</small></span>
     </div>
-    <h1>Sign in</h1>
-    <p class="auth-sub">Manage your website content.</p>
 
-    <form id="login-form" novalidate>
-      <label class="field">
-        <span>Email</span>
-        <input type="email" name="email" autocomplete="username" required />
-      </label>
-      <label class="field">
-        <span>Password</span>
-        <div class="password-field">
-          <input type="password" name="password" id="password-input" autocomplete="current-password" required />
-          <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password">
-            <i data-lucide="eye" class="icon-sm"></i>
-          </button>
-        </div>
-      </label>
-      <div id="login-message" class="form-message" role="alert" hidden></div>
-      <button type="submit" class="btn-accent btn-block" id="login-submit">
-        <span class="btn-label">Sign in</span>
-      </button>
-      <button type="button" id="forgot-btn" class="link-btn">Forgot password?</button>
-    </form>
+    <!-- Shown while we find out whether someone is already signed in. The form below stays hidden until we know nobody is. -->
+    <div class="auth-checking" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <p><span class="t-check">Checking your session…</span><span class="t-go">Signing you in…</span></p>
+    </div>
+
+    <div class="auth-panel" id="login-panel">
+      <h1>Sign in</h1>
+      <p class="auth-sub">Manage your website content.</p>
+
+      <form id="login-form" novalidate>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" name="email" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <div class="password-field">
+            <input type="password" name="password" id="password-input" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password">
+              <i data-lucide="eye" class="icon-sm"></i>
+            </button>
+          </div>
+        </label>
+        <div id="login-message" class="form-message" role="alert" hidden></div>
+        <button type="submit" class="btn-accent btn-block" id="login-submit">
+          <span class="btn-label">Sign in</span>
+        </button>
+        <button type="button" id="forgot-btn" class="link-btn">Forgot password?</button>
+      </form>
+    </div>
+
+    <noscript><p class="form-message error">Please turn on JavaScript to sign in.</p></noscript>
   </div>
 </main>
 
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<!-- async: the sign-in check must never wait for an icon library (login.js draws the icons once it has loaded). -->
+<script async src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script type="module" src="/admin/js/login.js"></script>
 </body>
 </html>

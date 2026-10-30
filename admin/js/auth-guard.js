@@ -9,6 +9,7 @@ import {
   doc,
   getDoc,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { rememberAdmin, forgetAdmin } from "./admin-hint.js";
 
 /**
  * Runs onSignedIn(user) once we know an ADMIN is logged in.
@@ -21,6 +22,10 @@ import {
  * Anonymous visitors are now treated as signed out, and everyone else must have an
  * admins/{uid} document. (firestore.rules is still the real lock on the data; this decides what
  * the screen shows.)
+ *
+ * It also keeps the "an admin is signed in on this browser" note (admin-hint.js) up to date, which is
+ * what lets the Admin link on the public site skip the sign-in page: set once an admin is confirmed,
+ * cleared whenever there is no admin session.
  */
 export function requireAuth(onSignedIn) {
   let settled = false;
@@ -39,6 +44,7 @@ export function requireAuth(onSignedIn) {
     settled = true;
     clearTimeout(timer);
     if (!user || user.isAnonymous) {
+      forgetAdmin(); // the session is gone (signed out, expired or revoked): stop skipping the sign-in page
       window.location.replace("/admin/login.html");
       return;
     }
@@ -60,6 +66,7 @@ export function requireAuth(onSignedIn) {
     }
 
     if (!isAdmin) {
+      forgetAdmin(); // signed in, but not as an admin: nothing to fast-forward to
       showGuardMessage(
         `You're signed in as ${user.email || "this account"}, but it isn't set up as an admin yet. Give this ID to whoever manages Firebase so they can add it to the admins collection:`,
         {
@@ -77,6 +84,7 @@ export function requireAuth(onSignedIn) {
       return;
     }
 
+    rememberAdmin(); // confirmed admin: next time "Admin" can go straight here
     document.body.classList.add("auth-ready");
     onSignedIn(user);
   });
@@ -113,6 +121,7 @@ export function wireLogout(buttonId) {
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
+      forgetAdmin(); // signing out on purpose: the next "Admin" tap must show the sign-in form
       await signOut(auth);
       window.location.replace("/admin/login.html");
     } catch (err) {

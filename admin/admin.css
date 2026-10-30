@@ -113,6 +113,19 @@ input,textarea{font:inherit;color:inherit;}
 .form-message{font-size:.85rem;padding:.65rem .8rem;border-radius:.5rem;margin-bottom:1rem;}
 .form-message.error{background:var(--danger-soft);color:var(--danger);}
 .form-message.success{background:var(--success-soft);color:var(--success);}
+.form-message.info{background:var(--surface-soft);color:var(--muted-foreground);}
+
+/* The sign-in page has three looks, set as data-auth on <html> by the script in login.html and by login.js:
+   "checking" and "redirecting" show the spinner; "form" shows the form. Which one is on screen is decided by the
+   inline rules at the top of login.html (so it can't depend on this file); this is just how the spinner look is drawn.
+   The card keeps one height in every look, so nothing jumps when the form appears. */
+.auth-card{display:flex;flex-direction:column;min-height:28.5rem;}
+.auth-checking{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8rem;
+  padding-bottom:1.5rem;color:var(--muted-foreground);font-size:.9rem;text-align:center;
+}
+.auth-checking .spinner{width:1.6rem;height:1.6rem;border-color:var(--border);border-top-color:var(--brand-gold);}
+@media (prefers-reduced-motion:reduce){.auth-checking .spinner{animation-duration:2s;}}
 
 /* ---------- Dashboard shell ---------- */
 .auth-loading{
