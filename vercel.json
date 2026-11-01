@@ -5,6 +5,9 @@
     },
     "api/videos.js": {
       "maxDuration": 30
+    },
+    "api/engagement.js": {
+      "maxDuration": 10
     }
   },
   "rewrites": [

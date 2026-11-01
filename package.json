@@ -2,6 +2,10 @@
   "name": "nd-flow-plumbing",
   "private": true,
   "version": "1.0.2",
+  "scripts": {
+    "test": "node --test tests/engagement.test.js",
+    "test:browser": "node tests/e2e/run.js"
+  },
   "engines": {
     "node": "22.x"
   }

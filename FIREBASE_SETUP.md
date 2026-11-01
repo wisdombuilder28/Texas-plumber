@@ -38,6 +38,8 @@ There is no public sign-up page anywhere in this project, by design. This is the
 2. Start in **production mode**. Pick any region (ideally one close to your visitors).
 3. Rules tab → replace the contents with everything in `firestore.rules` → Publish.
 
+(Video likes and the public Views counter use this same Firestore and the same anonymous sign-in. Their one-time setup is in `VIDEO_ENGAGEMENT.md`.)
+
 ### 6. Add yourself to the `admins` collection
 1. Firestore → Data tab → Start collection → Collection ID: `admins`.
 2. Document ID: paste the **User UID** from step 4.

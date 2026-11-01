@@ -20,6 +20,10 @@
 // Everything on screen is built with createElement / textContent, so a title or description is never
 // read as HTML. While the list loads the page says "Loading videos…". If the list is empty it says so, and if it
 // can't be loaded (offline, rules not published yet) it says that too, with a "Try again" button.
+//
+// Likes and the "Views" number (on each card and in the full-screen player) come from video-engagement-live.js.
+// It is loaded on its own, so if it ever fails to load the list and the player carry on exactly as before, just
+// without the like button and the view count.
 import { db } from "./firebase-config.js";
 import {
   collection,
@@ -29,6 +33,27 @@ import {
   startAfter,
   getDocs,
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+let engagement = null;
+const engagementReady = import("./video-engagement-live.js")
+  .then((module) => {
+    engagement = module;
+  })
+  .catch((error) => console.warn("Likes and views are unavailable:", error));
+
+// Runs fn(module) now if the likes/views code is loaded, or as soon as it is. A problem in there never reaches the page.
+function withEngagement(fn) {
+  const run = () => {
+    if (!engagement) return;
+    try {
+      fn(engagement);
+    } catch (error) {
+      console.warn("Likes and views problem:", error);
+    }
+  };
+  if (engagement) run();
+  else engagementReady.then(run);
+}
 
 const PAGE_SIZE = 6;
 const LOAD_TIMEOUT_MS = 20000;
@@ -142,6 +167,7 @@ function toItem(snap) {
     h: num(d.height),
     pw: num(d.posterW),
     ph: num(d.posterH),
+    views: num(d.viewCount), // kept by api/engagement.js; a video that was never watched has none
     date: formatDate(d.createdAt),
     el: null,
   };
@@ -204,6 +230,7 @@ function buildCard(item) {
   body.appendChild(label);
   body.appendChild(el("h3", "vid-title", item.title));
   if (item.caption) body.appendChild(el("p", "vid-caption", item.caption));
+  withEngagement((m) => body.appendChild(m.buildStats(item).el)); // the like button and the view count
 
   card.appendChild(media);
   card.appendChild(body);
@@ -487,6 +514,14 @@ function buildCaption(item) {
     inner.appendChild(text);
   }
   cap.appendChild(inner);
+  // The like button and the view count sit under the description, outside the part that scrolls when it is opened up.
+  withEngagement((m) => {
+    const stats = m.buildStats(item, { player: true });
+    const row = el("div", "vid-cap-row");
+    row.appendChild(stats.el);
+    cap.appendChild(row);
+    cap.releaseStats = stats.release; // called when the player closes
+  });
   return cap;
 }
 
@@ -529,6 +564,7 @@ function buildSlide(item) {
     errored: false,
     failing: false, //    one explanation per failure, even if the browser reports it twice
     played: false, //     counted once for analytics
+    untrack: null, //     stops the view counter watching this slide's <video> (see video-engagement-live.js)
     retried: 0,
     resumeAt: 0,
     loadToken: 0,
@@ -601,12 +637,20 @@ function ensureVideo(s) {
   wireVideo(s, v);
   s.el.insertBefore(v, s.el.firstChild);
   s.video = v;
+  // The view counter only listens: it counts a view after 5 real seconds of playback, and can't touch the video.
+  withEngagement((m) => {
+    if (s.video === v && !s.untrack) s.untrack = m.trackPlayback(v, s.item);
+  });
   return v;
 }
 
 function destroyVideo(s) {
   const v = s.video;
   if (!v) return;
+  if (s.untrack) {
+    s.untrack(); // credits the seconds played so far, before the video is emptied below
+    s.untrack = null;
+  }
   s.loadToken += 1; // a play-link request still on its way is ignored
   if (s.abort) {
     s.abort.abort();
@@ -860,6 +904,7 @@ function activate(idx) {
   activeIdx = idx;
   neighboursOk = false;
   updateWindow(idx);
+  withEngagement((m) => m.loadStats(next.item.id)); // the like count for the video now on screen
   playSlide(next);
   const v = next.video;
   if (v && v.readyState >= 4) allowNeighbours(); // it was warmed up as a neighbour and is ready: warm the next one too
@@ -993,6 +1038,8 @@ function cleanup() {
   slides.forEach((s) => {
     setBusy(s, false);
     destroyVideo(s);
+    const cap = s.el.querySelector(".vid-cap");
+    if (cap && typeof cap.releaseStats === "function") cap.releaseStats();
   });
   slides = [];
   activeIdx = -1;

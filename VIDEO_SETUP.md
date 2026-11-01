@@ -23,6 +23,7 @@ Project root = the folder that has `work-videos.html` in it.
 | `admin/js/videos-admin.js`, `video-upload.js`, `video-engine.bundle.js` | `admin/js/` folder (the bundle is big, about 450 KB, that's normal) |
 | `videos-live.js`, `work-videos.css`, `work-videos.html` | project root (the public Recent Work: Videos page) |
 | `vercel.json`, `firestore.rules` | project root |
+| `api/engagement.js`, `video-engagement-live.js` | the Views counter and likes (see `VIDEO_ENGAGEMENT.md`) |
 
 Push to GitHub as usual.
 
@@ -77,6 +78,8 @@ These keys live only in Vercel. Never paste them into GitHub, into a file, or in
 Firebase console → Firestore Database → **Rules** → replace everything with the `firestore.rules` file → **Publish**.
 
 (Without this, the video uploads fine but “saving to the list” is refused, and the public page can't read the list.)
+
+The same rules file also covers the video **likes** and **Views**; see `VIDEO_ENGAGEMENT.md` for those (and the one-time check that the server key may write).
 
 ---
 
@@ -157,7 +160,7 @@ Good to know:
 
 - **Who can do what.** Only someone signed in as the admin (checked on the server, against the `admins` list) can upload or delete. Anyone can *watch* a video on Recent Work → Videos: when someone presses play, the server hands out a temporary link (valid for hours). That is by design.
 - **Keys are 24 random characters** and are never listed publicly, but a link that was shared can be opened by whoever has it until it expires. Videos you don't want public shouldn't be posted.
-- **The service account** in `FIREBASE_SERVICE_ACCOUNT_JSON` is powerful if it is the default Firebase one. Keeping it Production-only and Secret is the main protection. For extra care, create a separate service account with only “Cloud Datastore Viewer” and GA4 “Viewer”.
+- **The service account** in `FIREBASE_SERVICE_ACCOUNT_JSON` is powerful if it is the default Firebase one. Keeping it Production-only and Secret is the main protection. For extra care, create a separate service account with “Cloud Datastore User” and GA4 “Viewer”. (Not “Viewer”: the public Views counter saves its numbers with this account, which needs permission to write; see `VIDEO_ENGAGEMENT.md`.)
 
 ---
 

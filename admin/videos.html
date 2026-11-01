@@ -131,6 +131,12 @@
           </div>
         </div>
 
+        <!-- Likes and views of each video, shown on its card below. Appears once there is at least one video. -->
+        <div id="video-statsbar" class="v-statsbar" hidden>
+          <p id="video-statsbar-text" class="v-statsbar-text" aria-live="polite">Views update by themselves. Tap Refresh to update the likes.</p>
+          <button type="button" id="video-stats-refresh" class="btn-ghost-dark v-statsbar-btn">Refresh</button>
+        </div>
+
         <p id="video-loading" class="gallery-loading">Loading videos…</p>
         <ul id="video-list" class="v-list"></ul>
         <div id="video-empty" class="empty-state" hidden>

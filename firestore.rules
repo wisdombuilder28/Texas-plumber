@@ -87,8 +87,37 @@ service cloud.firestore {
 
     match /videos/{videoId} {
       allow read: if true;
-      allow create, update: if isAdmin() && validVideo(request.resource.data);
+
+      // `viewCount` is the public "Views" number. Only api/engagement.js changes it (it signs in as the server, so
+      // these rules don't apply to it). Nothing in a browser -- the admin included -- may add it or change it, so an
+      // edited or re-saved video can never reset it and nobody can type a number into it. (Everything else an
+      // admin could already do to a video is exactly as before.)
+      allow create: if isAdmin() && validVideo(request.resource.data)
+        && !('viewCount' in request.resource.data);
+      allow update: if isAdmin() && validVideo(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['viewCount']);
       allow delete: if isAdmin();
+
+      // Public video likes, one per visitor. Exactly the design of gallery/{imageId}/likes above: the document ID
+      // *is* the visitor's Firebase Auth UID (anonymous or admin), so nobody can create a like at any path but their
+      // own, and Firestore itself refuses a second like from the same identity. Unliking is a delete of that same
+      // doc. The number shown on the site is simply how many of these documents exist, so there is no counter to
+      // drift or to tamper with. Nothing here can touch the video document above.
+      match /likes/{uid} {
+        allow read: if true;
+        allow create: if request.auth != null && request.auth.uid == uid
+          && exists(/databases/$(database)/documents/videos/$(videoId))
+          && request.resource.data.keys().hasOnly(['likedAt'])
+          && request.resource.data.likedAt == request.time;
+        allow delete: if request.auth != null && request.auth.uid == uid;
+        allow update: if false;
+      }
+
+      // Each visitor's "I already watched this" record, which is how a view is counted once per 24 hours. Written
+      // and read only by api/engagement.js (the server, which these rules don't apply to). Closed to every browser.
+      match /views/{uid} {
+        allow read, write: if false;
+      }
     }
 
     // ---- Reserved for future phases: schema is live now, UI/dashboard pages come later ----

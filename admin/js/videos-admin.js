@@ -13,6 +13,7 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  getCountFromServer,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -89,6 +90,10 @@ const loadingEl = $("video-loading");
 const emptyEl = $("video-empty");
 const emptyText = $("video-empty-text");
 const moreBtn = $("video-more");
+// If an old copy of the page is ever paired with this script, these fall back to unattached elements so the page still works.
+const statsBar = $("video-statsbar") || document.createElement("div");
+const statsText = $("video-statsbar-text") || document.createElement("p");
+const statsRefresh = $("video-stats-refresh") || document.createElement("button");
 const playerDialog = $("player");
 const playerVideo = $("player-video");
 const playerCaption = $("player-caption");
@@ -134,6 +139,8 @@ const ICONS = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
 };
 function icon(name, size = 18) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1268,9 +1275,13 @@ function createCard(id) {
   const caption = el("p", { class: "v-caption" });
   const edit = el("button", { type: "button", class: "btn-ghost-dark v-edit", onclick: () => openEdit(id) }, icon("pencil", 16), el("span", { text: "Edit" }));
   const del = el("button", { type: "button", class: "g-delete", onclick: () => deleteVideo(id) }, icon("trash"));
-  const info = el("div", { class: "v-info" }, title, sub, caption, el("div", { class: "v-actions" }, edit, del));
+  // How the video is doing: its likes and its views (the numbers are filled in by paintLikes / updateCard below).
+  const likesText = el("span", { text: "– likes" });
+  const viewsText = el("span", { text: "0 views" });
+  const stats = el("div", { class: "v-stats" }, el("span", { class: "v-stat" }, icon("heart", 15), likesText), el("span", { class: "v-stat" }, icon("eye", 15), viewsText));
+  const info = el("div", { class: "v-info" }, title, sub, stats, caption, el("div", { class: "v-actions" }, edit, del));
   const root = el("li", { class: "v-card" }, thumb, info);
-  return { id, root, img, dur, thumb, title, sub, caption, edit, del, sig: null, poster: null };
+  return { id, root, img, dur, thumb, title, sub, caption, edit, del, likesText, viewsText, sig: null, poster: null };
 }
 
 function updateCard(card, d) {
@@ -1282,6 +1293,8 @@ function updateCard(card, d) {
     if (typeof d.poster === "string" && DATA_IMAGE.test(d.poster)) card.img.src = d.poster;
     else card.img.removeAttribute("src");
   }
+  // Views change while the page is open (visitors watching), so they are updated before the "nothing else changed" shortcut below.
+  card.viewsText.textContent = countLabel(Number.isSafeInteger(d.viewCount) && d.viewCount > 0 ? d.viewCount : 0, "view", "views");
   if (card.sig === sig) return;
   card.sig = sig;
   card.title.textContent = title;
@@ -1302,8 +1315,72 @@ function syncChildren(container, wanted) {
   while (container.children.length > wanted.length) container.lastElementChild.remove();
 }
 
+// ---------- likes and views for each video ----------
+// Views are a number on the video's own entry (kept up to date by /api/engagement), so they arrive with the list and
+// change by themselves. Likes are one small record per visitor under each video; they are counted with a cheap count
+// query, once when a video first appears, again when the Refresh button is tapped, and again when the admin comes back
+// to this page after a minute. (This is separate from the website analytics on the Overview page.)
+const STATS_HINT = "Views update by themselves. Tap Refresh to update the likes.";
+const likeCounts = new Map(); // video id -> number of likes
+const likesAsked = new Set(); //  ids whose likes have been asked for
+let likesInFlight = 0;
+let likesLoadedAt = 0;
+
+function countLabel(n, one, many) {
+  return `${Number(n).toLocaleString("en-NG")} ${n === 1 ? one : many}`;
+}
+
+function setStatsHint(text, isError) {
+  const next = text || STATS_HINT;
+  if (statsText.textContent !== next) statsText.textContent = next; // only when it changes, so a screen reader isn't told the same thing twice
+  statsText.classList.toggle("is-error", Boolean(isError));
+}
+
+function paintLikes(id) {
+  const card = cards.get(id);
+  if (!card) return;
+  const n = likeCounts.get(id);
+  card.likesText.textContent = typeof n === "number" ? countLabel(n, "like", "likes") : "– likes";
+}
+
+async function fetchLikes(ids) {
+  const wanted = ids.filter((id) => cards.has(id));
+  if (!wanted.length) return;
+  likesInFlight += wanted.length;
+  statsRefresh.disabled = true;
+  statsRefresh.textContent = "Refreshing…";
+  let failed = 0;
+  await Promise.all(
+    wanted.map(async (id) => {
+      likesAsked.add(id);
+      try {
+        const snap = await withTimeout(getCountFromServer(collection(db, "videos", id, "likes")), 20000);
+        likeCounts.set(id, snap.data().count);
+      } catch (error) {
+        failed += 1;
+        console.warn("Couldn't count the likes of a video:", error);
+      } finally {
+        likesInFlight -= 1;
+        paintLikes(id);
+      }
+    })
+  );
+  if (!likesInFlight) {
+    statsRefresh.disabled = false;
+    statsRefresh.textContent = "Refresh";
+  }
+  likesLoadedAt = Date.now();
+  setStatsHint(failed ? "Couldn't load likes for some videos. Tap Refresh to try again." : "", failed > 0);
+}
+
+statsRefresh.addEventListener("click", () => fetchLikes(orderedIds.slice()));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && loaded && !likesInFlight && Date.now() - likesLoadedAt > 60000) fetchLikes(orderedIds.slice());
+});
+
 function layoutList() {
   syncChildren(listEl, orderedIds.map((id) => cards.get(id).root));
+  statsBar.hidden = !(loaded && orderedIds.length > 0);
   loadingEl.hidden = loaded;
   const empty = loaded && orderedIds.length === 0;
   emptyEl.hidden = !empty;
@@ -1337,9 +1414,13 @@ function onVideos(snapshot) {
     if (!seen.has(id)) {
       card.root.remove();
       cards.delete(id);
+      likeCounts.delete(id);
+      likesAsked.delete(id);
     }
   }
   layoutList();
+  const fresh = orderedIds.filter((id) => !likesAsked.has(id)); // only videos that just appeared: a view count changing doesn't re-ask
+  if (fresh.length) fetchLikes(fresh);
 }
 
 // Why the list couldn't be read. "permission-denied" almost always means the new Firestore rules haven't been published yet.

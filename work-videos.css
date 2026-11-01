@@ -61,6 +61,22 @@
 .vid-more .work-filter-btn{min-height:2.75rem;padding-inline:1.25rem;}
 .vid-more .work-filter-btn:disabled{opacity:.6;cursor:default;}
 
+/* ---------- likes and views (built by video-engagement-live.js) ----------
+   The like button is the same pill as the one under the photos on the Images page (.like-btn in styles.css), so the
+   look, the liked colour and the loading / retry states match. Only the spacing, a tap area that reaches 44px, and
+   the dark version for the full-screen player are set here. */
+.vid-stats{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.5rem;}
+.vid-stats .like-btn{position:relative;align-self:center;margin-top:0;min-height:2.25rem;font-variant-numeric:tabular-nums;}
+.vid-stats .like-btn::after{content:"";position:absolute;inset:-.3rem -.15rem;} /* the pill stays compact; its tap area doesn't */
+.vid-stats .like-btn:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
+.vid-views{
+  display:inline-flex;align-items:center;gap:.4rem;
+  font-size:calc(.82rem * var(--ts));font-weight:600;color:var(--muted-foreground);font-variant-numeric:tabular-nums;
+}
+.vid-views .icon-sm{flex:none;}
+.vid-stats-note{flex:1 0 100%;font-size:calc(.78rem * var(--ts));line-height:1.35;color:oklch(0.5 0.19 25);}
+.vid-stats-note:empty{display:none;}
+
 /* ---------- the full-screen player ----------
    The pop-up fills the whole screen (edge to edge, under the status bar and notch). Each video is one slide in a
    row that is swiped left / right (native scroll-snap, so it follows the finger like any phone app). The title and
@@ -158,6 +174,25 @@ html.vid-open{overflow:hidden;}
 }
 .vid-readmore:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;border-radius:.2rem;}
 
+/* like button + views under the description, in the player. Only the button itself takes taps: a tap anywhere else
+   in the row still pauses / plays the video, as it does everywhere else on the slide. */
+.vid-cap-row{max-width:46rem;margin-inline:auto;}
+.vid-stats--player{margin-top:.6rem;gap:.35rem .6rem;pointer-events:none;}
+.vid-stats--player .like-btn{
+  pointer-events:auto;min-height:2.5rem;padding:.45rem .95rem;
+  background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.32);color:#fff;
+  font-size:calc(.9rem * var(--ts));text-shadow:none;
+}
+.vid-stats--player .like-btn::after{inset:-.25rem -.15rem;}
+.vid-stats--player .like-btn:hover{background:rgba(0,0,0,.62);border-color:rgba(255,255,255,.6);color:#fff;}
+.vid-stats--player .like-btn[aria-pressed="true"]{background:oklch(0.55 0.22 20 / .92);border-color:oklch(0.8 0.14 20);color:#fff;}
+.vid-stats--player .like-btn:focus-visible{outline-color:var(--vid-gold);}
+.vid-stats--player .vid-views{
+  padding:.45rem .8rem;border-radius:999px;background:rgba(0,0,0,.4);color:rgba(255,255,255,.95);
+  font-size:calc(.85rem * var(--ts));text-shadow:none;
+}
+.vid-stats--player .vid-stats-note{color:#ffd9d4;text-shadow:0 1px 3px rgba(0,0,0,.7);}
+
 /* top row: video counter + close */
 .vid-top{
   position:absolute;top:0;left:0;right:0;z-index:5;pointer-events:none;
@@ -234,4 +269,6 @@ html.vid-open{overflow:hidden;}
   .vid-play,.vid-media::after{transition:none;}
   .vid-viewer[open]{animation:none;}
   .vid-center,.vid-close,.vid-nav{transition:none;}
+  .vid-stats .like-btn.is-loading .like-count{animation:none;}
+  .vid-stats .like-btn .icon-sm{transition:none;}
 }

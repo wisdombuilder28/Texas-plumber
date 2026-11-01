@@ -143,6 +143,17 @@
 }
 .v-more{display:flex;justify-content:center;margin-top:1rem;}
 
+/* ---------- likes and views ---------- */
+.v-statsbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin:0 0 .75rem;}
+.v-statsbar[hidden]{display:none;}
+.v-statsbar-text{flex:1;min-width:0;font-size:.8rem;line-height:1.4;color:var(--muted-foreground);}
+.v-statsbar-text.is-error{color:var(--danger);font-weight:600;}
+.v-statsbar-btn{flex:none;min-height:2.75rem;justify-content:center;}
+.v-statsbar-btn:disabled{opacity:.6;cursor:default;}
+.v-stats{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .9rem;font-size:.8rem;font-weight:600;color:var(--brand-black);}
+.v-stat{display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;}
+.v-stat svg{flex:none;color:var(--muted-foreground);}
+
 /* ---------- storage setup & test ---------- */
 .v-setup{margin-top:1.5rem;border:1px solid var(--border);border-radius:.75rem;background:var(--surface-soft);}
 .v-setup summary{
