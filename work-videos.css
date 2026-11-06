@@ -62,10 +62,14 @@
 .vid-more .work-filter-btn:disabled{opacity:.6;cursor:default;}
 
 /* ---------- likes and views (built by video-engagement-live.js) ----------
-   The like button is the same pill as the one under the photos on the Images page (.like-btn in styles.css), so the
-   look, the liked colour and the loading / retry states match. Only the spacing, a tap area that reaches 44px, and
-   the dark version for the full-screen player are set here. */
+   Markup:  .vid-stats > .vid-engage > ( button.like-btn.vid-like , span.vid-sep , span.vid-views )  +  .vid-stats-note
+   and each number is a span.vid-num followed by a span.vid-unit (" likes", " views").
+   On a card the like button is the same pill as the one under the photos on the Images page (.like-btn in styles.css),
+   so the look, the liked colour and the loading / retry states match, with the views beside it. Only the spacing and a
+   tap area that reaches 44px are set here. In the full-screen player the two become ONE capsule (further down). */
 .vid-stats{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.5rem;}
+.vid-engage{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;min-width:0;}
+.vid-sep{display:none;} /* the dot between the two is only drawn in the player */
 .vid-stats .like-btn{position:relative;align-self:center;margin-top:0;min-height:2.25rem;font-variant-numeric:tabular-nums;}
 .vid-stats .like-btn::after{content:"";position:absolute;inset:-.3rem -.15rem;} /* the pill stays compact; its tap area doesn't */
 .vid-stats .like-btn:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
@@ -74,8 +78,11 @@
   font-size:calc(.82rem * var(--ts));font-weight:600;color:var(--muted-foreground);font-variant-numeric:tabular-nums;
 }
 .vid-views .icon-sm{flex:none;}
+.vid-views[data-pending="true"]{opacity:.7;} /* the +1 is shown, but the server hasn't confirmed it yet */
 .vid-stats-note{flex:1 0 100%;font-size:calc(.78rem * var(--ts));line-height:1.35;color:oklch(0.5 0.19 25);}
 .vid-stats-note:empty{display:none;}
+@keyframes vidPop{0%{transform:scale(1);}40%{transform:scale(1.32);}100%{transform:scale(1);}}
+.vid-like.pop .icon-sm{animation:vidPop .28s ease-out;}
 
 /* ---------- the full-screen player ----------
    The pop-up fills the whole screen (edge to edge, under the status bar and notch). Each video is one slide in a
@@ -146,52 +153,104 @@ html.vid-open{overflow:hidden;}
 .vid-status p{margin:0;max-width:22rem;}
 .vid-status .btn-accent{font-size:calc(.9rem * var(--ts));padding:.65rem 1.25rem;}
 
-/* title + description over the bottom of the video */
+/* title + description + likes / views over the bottom of the video.
+   Top to bottom: a small category / date label, the title, a short description (two lines that fit the screen's width,
+   then "Read more"), and ONE small capsule holding the like button and the view count. The block sits on a dark fade
+   that is strongest right behind the text, so it reads on a white frame as well as a black one, and it is kept compact
+   so most of the picture stays visible. It always ends above the progress bar (see --ctl-h), whatever the screen. */
 .vid-cap{
+  --fade:1.75rem; /* the soft top edge of the dark fade; the text starts below it, so no line sits in the thin part */
   position:absolute;left:0;right:0;z-index:2;
   bottom:calc(var(--ctl-h) + env(safe-area-inset-bottom, 0px));
-  padding:3.5rem calc(1rem + env(safe-area-inset-right, 0px)) .65rem calc(1rem + env(safe-area-inset-left, 0px));
-  background:linear-gradient(to top, rgba(0,0,0,.74) 0%, rgba(0,0,0,.5) 55%, rgba(0,0,0,0) 100%);
-  cursor:default;pointer-events:none; /* taps on the text fall through to the video; only "Read more" is tappable */
-  text-shadow:0 1px 3px rgba(0,0,0,.65);
+  padding:var(--fade) calc(.9rem + env(safe-area-inset-right, 0px)) .55rem calc(.9rem + env(safe-area-inset-left, 0px));
+  background:linear-gradient(to top, rgba(0,0,0,.8) 0, rgba(0,0,0,.68) calc(100% - var(--fade)), rgba(0,0,0,0) 100%);
+  cursor:default;pointer-events:none; /* taps on the text fall through to the video; only "Read more" and the heart are tappable */
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
 }
-.vid-cap-scroll{max-width:46rem;margin-inline:auto;}
-.vid-cap.is-open{pointer-events:auto;background:linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.8) 70%, rgba(0,0,0,0) 100%);}
-.vid-cap.is-open .vid-cap-scroll{max-height:min(50vh, 22rem);max-height:min(50dvh, 22rem);overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;}
+.vid-cap.is-open{
+  pointer-events:auto;
+  background:linear-gradient(to top, rgba(0,0,0,.92) 0, rgba(0,0,0,.84) calc(100% - var(--fade)), rgba(0,0,0,0) 100%);
+}
+.vid-cap-scroll,.vid-cap-row{max-width:34rem;margin-inline:auto;}
+/* opened up: the text scrolls inside its own box, so it can never grow into the top row or the progress bar */
+.vid-cap.is-open .vid-cap-scroll{
+  max-height:min(44vh, 19rem);max-height:min(44dvh, 19rem);
+  overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;
+}
 .vid-cap-meta{
-  margin:0;font-size:calc(.7rem * var(--ts));font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vid-gold);
+  display:flex;align-items:center;gap:.4rem;margin:0;
+  font-size:calc(.81rem * var(--ts));font-weight:600;letter-spacing:.06em;line-height:1.2;text-transform:uppercase;
+  color:rgba(255,255,255,.88);
 }
+.vid-cap-meta::before{content:"";flex:none;width:.4rem;height:.4rem;border-radius:50%;background:var(--vid-gold);}
 .vid-cap-title{
-  margin:.25rem 0 0;color:#fff;font-size:calc(1.15rem * var(--ts));font-weight:700;line-height:1.25;overflow-wrap:anywhere;
+  margin:.22rem 0 0;color:#fff;font-size:calc(1.2rem * var(--ts));font-weight:700;line-height:1.25;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
 }
+.vid-cap.is-open .vid-cap-title{display:block;overflow:visible;}
 .vid-cap-text{
-  margin:.4rem 0 0;color:rgba(255,255,255,.95);font-size:calc(.95rem * var(--ts));line-height:1.45;
+  margin:.3rem 0 0;color:rgba(255,255,255,.95);font-size:calc(1rem * var(--ts));line-height:1.4;
   white-space:pre-line;overflow-wrap:anywhere;
 }
 .vid-readmore{
-  display:inline;margin:0;padding:.2rem 0;border:0;background:none;color:#fff;
+  position:relative;display:inline;margin:0;padding:0;border:0;background:none;color:#fff;
   font:inherit;font-weight:700;cursor:pointer;pointer-events:auto;text-shadow:inherit;
+  text-decoration:underline;text-decoration-color:rgba(255,255,255,.5);text-underline-offset:.18em;
 }
+.vid-readmore::after{content:"";position:absolute;inset:-.6rem 0;} /* a fingertip-sized target: taller than the words (not wider, so it never sticks out past the text) */
 .vid-readmore:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;border-radius:.2rem;}
 
-/* like button + views under the description, in the player. Only the button itself takes taps: a tap anywhere else
-   in the row still pauses / plays the video, as it does everywhere else on the slide. */
-.vid-cap-row{max-width:46rem;margin-inline:auto;}
-.vid-stats--player{margin-top:.6rem;gap:.35rem .6rem;pointer-events:none;}
+/* the engagement capsule:  ♥ 2 · ◉ 3  in one translucent dark pill. Only the heart takes taps; a tap anywhere else in
+   the row still pauses / plays the video, as it does everywhere else on the slide. The numbers say what they are in
+   the page for screen readers (and in the heart's own label); the words "likes" / "views" are drawn only where
+   there is room (see the wide-screen rules below). */
+.vid-cap-row{margin-top:.5rem;}
+.vid-stats--player{flex-wrap:nowrap;margin-top:0;gap:.5rem;pointer-events:none;}
+.vid-stats--player .vid-engage{
+  flex:none;flex-wrap:nowrap;gap:0;min-height:2.25rem;padding:0 .2rem;
+  border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(12,12,14,.64);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  text-shadow:none;font-variant-numeric:tabular-nums;
+}
 .vid-stats--player .like-btn{
-  pointer-events:auto;min-height:2.5rem;padding:.45rem .95rem;
-  background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.32);color:#fff;
-  font-size:calc(.9rem * var(--ts));text-shadow:none;
+  position:relative;align-self:stretch;margin:0;min-height:0;padding:0 .55rem 0 .6rem;gap:.35rem;
+  pointer-events:auto;border:0;border-radius:999px;background:transparent;color:#fff;
+  font-size:calc(1rem * var(--ts));font-weight:700;line-height:1;
 }
-.vid-stats--player .like-btn::after{inset:-.25rem -.15rem;}
-.vid-stats--player .like-btn:hover{background:rgba(0,0,0,.62);border-color:rgba(255,255,255,.6);color:#fff;}
-.vid-stats--player .like-btn[aria-pressed="true"]{background:oklch(0.55 0.22 20 / .92);border-color:oklch(0.8 0.14 20);color:#fff;}
-.vid-stats--player .like-btn:focus-visible{outline-color:var(--vid-gold);}
+.vid-stats--player .like-btn::after{inset:-.4rem -.1rem;} /* the capsule stays 36px tall; the tap area is about 49px */
+.vid-stats--player .like-btn:hover{background:rgba(255,255,255,.12);border-color:transparent;color:#fff;}
+.vid-stats--player .like-btn[aria-pressed="true"]{background:transparent;border-color:transparent;color:#ff8ea3;}
+.vid-stats--player .like-btn[aria-pressed="true"] .icon-sm{fill:currentColor;}
+.vid-stats--player .like-btn:focus-visible{outline:2px solid var(--vid-gold);outline-offset:1px;}
+.vid-stats--player .like-btn .icon-sm,.vid-stats--player .vid-views .icon-sm{width:1.05rem;height:1.05rem;}
+.vid-stats--player .vid-sep{display:block;padding:0 .05rem;color:rgba(255,255,255,.55);font-weight:700;line-height:1;}
 .vid-stats--player .vid-views{
-  padding:.45rem .8rem;border-radius:999px;background:rgba(0,0,0,.4);color:rgba(255,255,255,.95);
-  font-size:calc(.85rem * var(--ts));text-shadow:none;
+  gap:.35rem;padding:0 .75rem 0 .5rem;color:rgba(255,255,255,.94);
+  font-size:calc(1rem * var(--ts));font-weight:600;line-height:1;
 }
-.vid-stats--player .vid-stats-note{color:#ffd9d4;text-shadow:0 1px 3px rgba(0,0,0,.7);}
+.vid-stats--player .vid-unit{
+  position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;
+}
+/* a message (like couldn't be saved) sits beside the capsule, so it doesn't push the text up */
+.vid-stats--player .vid-stats-note{
+  flex:1 1 0;min-width:0;font-size:calc(.9rem * var(--ts));line-height:1.25;color:#ffd9d4;text-shadow:0 1px 2px rgba(0,0,0,.85);
+}
+
+/* wide screens (tablets, desktops): there is room, so the words come back */
+@media (min-width:640px){
+  .vid-cap-scroll,.vid-cap-row{max-width:36rem;}
+  .vid-stats--player .vid-unit{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:nowrap;}
+}
+
+/* a phone turned sideways has little height: one line of title, one of description, and the capsule at the right
+   edge of the same band instead of under the text, so the picture keeps as much room as possible */
+@media (max-height:520px) and (orientation:landscape){
+  .vid-cap{--fade:1.25rem;display:flex;align-items:flex-end;gap:.9rem;}
+  .vid-cap-scroll{flex:0 1 40rem;min-width:0;max-width:none;margin:0;}
+  .vid-cap-row{flex:0 0 auto;max-width:none;margin:0 0 0 auto;}
+  .vid-cap-title{-webkit-line-clamp:1;}
+  .vid-cap.is-open .vid-cap-scroll{max-height:min(46vh, 12rem);max-height:min(46dvh, 12rem);}
+}
 
 /* top row: video counter + close */
 .vid-top{
@@ -262,6 +321,15 @@ html.vid-open{overflow:hidden;}
 }
 .vid-seek::-moz-range-thumb{width:1rem;height:1rem;border:0;border-radius:50%;background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);}
 
+/* ?timing=1 on the page address shows the like / view measurements on screen (built by video-engagement-live.js, which
+   says what each line means). A debugging aid: nothing here exists unless it was asked for. */
+.ndf-timing{
+  position:fixed;left:.5rem;top:calc(3.6rem + env(safe-area-inset-top, 0px));z-index:2147483000;
+  max-width:calc(100vw - 1rem);margin:0;padding:.35rem .5rem;border-radius:.4rem;
+  background:rgba(0,0,0,.82);color:#9fe870;font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;
+}
+
 @media (prefers-reduced-motion:reduce){
   .vid-item{animation:none;transition:none;}
   .vid-item:hover{transform:none;}
@@ -271,4 +339,5 @@ html.vid-open{overflow:hidden;}
   .vid-center,.vid-close,.vid-nav{transition:none;}
   .vid-stats .like-btn.is-loading .like-count{animation:none;}
   .vid-stats .like-btn .icon-sm{transition:none;}
+  .vid-like.pop .icon-sm{animation:none;}
 }

@@ -475,13 +475,25 @@ function durationOf(slide) {
 }
 
 // ----- one slide -----
-// The description is cut after a few words with "Read more", like a WhatsApp status; the full text opens in place.
+// The description is cut after two lines with "Read more", like a WhatsApp status; the full text opens in place. How
+// much fits in two lines depends on the width of the screen, so the cut is measured (fitCaption) once the slide is on
+// screen and again whenever the width changes. previewText is the rough, by-characters cut that stands in until then.
+const CAPTION_LINES = 2; //       lines of description shown before "Read more"
+const CAPTION_LINES_SHORT = 1; // ...on a screen with little height (a phone turned sideways, a very small phone), so the picture keeps its room
+const shortScreen = () => typeof matchMedia === "function" && matchMedia("(max-height: 520px)").matches;
+
 function previewText(text) {
   if (text.length <= CAPTION_PREVIEW + 20) return null; // short enough: show it all, no button
   let cut = text.slice(0, CAPTION_PREVIEW);
   const space = cut.search(/\s\S*$/);
   if (space > CAPTION_PREVIEW - 25) cut = cut.slice(0, space);
   return cut.trimEnd() + "… "; // the space keeps "Read more" off the text, and vanishes if "Read more" starts a new line
+}
+
+function lineHeightOf(node) {
+  const style = getComputedStyle(node);
+  const px = parseFloat(style.lineHeight);
+  return Number.isFinite(px) ? px : (parseFloat(style.fontSize) || 16) * 1.4;
 }
 
 function buildCaption(item) {
@@ -491,26 +503,78 @@ function buildCaption(item) {
   if (meta) inner.appendChild(el("p", "vid-cap-meta", meta));
   inner.appendChild(el("h3", "vid-cap-title", item.title));
   if (item.caption) {
+    const full = item.caption;
     const text = el("p", "vid-cap-text");
-    const short = previewText(item.caption);
-    if (!short) {
-      text.textContent = item.caption;
-    } else {
-      const body = document.createTextNode(short);
-      const more = el("button", "vid-readmore", "Read more");
-      more.type = "button";
-      more.setAttribute("aria-expanded", "false");
-      more.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const open = !cap.classList.contains("is-open");
-        cap.classList.toggle("is-open", open);
-        body.nodeValue = open ? item.caption + " " : short; // (the space keeps the button off the last word, as it does in the cut text)
-        more.textContent = open ? "Show less" : "Read more";
-        more.setAttribute("aria-expanded", open ? "true" : "false");
-        if (!open) inner.scrollTop = 0;
-      });
-      text.append(body, more);
-    }
+    text.id = `vid-cap-${item.id}`;
+    const body = document.createTextNode("");
+    const more = el("button", "vid-readmore", "Read more");
+    more.type = "button";
+    more.setAttribute("aria-controls", text.id);
+    let short = previewText(full); // what shows before "Read more" (null: the whole text fits, no button)
+    let open = false;
+    let fitted = ""; //                what `short` was last measured for: "<width>x<lines>"
+
+    const draw = () => {
+      if (open) body.nodeValue = full + " "; // (the space keeps the button off the last word, as it does in the cut text)
+      else body.nodeValue = short || full;
+      more.hidden = !open && !short;
+      more.textContent = open ? "Show less" : "Read more";
+      more.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
+    // Finds the longest start of the description that, with "…" and the button, still fits in two lines at the
+    // width the text has right now (a cut at a word end, by halving, so it is a handful of measurements).
+    cap.fit = () => {
+      if (open) return;
+      const width = Math.round(text.clientWidth);
+      if (!width) return; // not laid out (yet)
+      const lines = shortScreen() ? CAPTION_LINES_SHORT : CAPTION_LINES;
+      const key = `${width}x${lines}`;
+      if (key === fitted) return;
+      fitted = key;
+      const limit = lineHeightOf(text) * lines + 1;
+      const fits = () => text.getBoundingClientRect().height <= limit;
+      more.hidden = true;
+      body.nodeValue = full;
+      if (fits()) {
+        short = null;
+        draw();
+        return;
+      }
+      more.hidden = false;
+      more.textContent = "Read more";
+      const ends = [];
+      for (const m of full.matchAll(/\s+/g)) ends.push(m.index);
+      let lo = 0;
+      let hi = ends.length - 1;
+      let best = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        body.nodeValue = full.slice(0, ends[mid]).trimEnd() + "… ";
+        if (fits()) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      short = (best >= 0 ? full.slice(0, ends[best]).trimEnd() : full.slice(0, 24).trimEnd()) + "… ";
+      draw();
+    };
+
+    more.addEventListener("click", (e) => {
+      e.stopPropagation();
+      open = !open;
+      cap.classList.toggle("is-open", open);
+      if (!open) {
+        inner.scrollTop = 0;
+        fitted = ""; // the width may have changed while it was open: measure again
+      }
+      draw();
+      if (!open) cap.fit();
+    });
+    text.append(body, more);
+    draw();
     inner.appendChild(text);
   }
   cap.appendChild(inner);
@@ -523,6 +587,12 @@ function buildCaption(item) {
     cap.releaseStats = stats.release; // called when the player closes
   });
   return cap;
+}
+
+// Measures the description of a slide that is (about to be) on screen.
+function fitCaption(s) {
+  const cap = s && s.el.querySelector(".vid-cap");
+  if (cap && typeof cap.fit === "function") cap.fit();
 }
 
 function buildSlide(item) {
@@ -876,6 +946,7 @@ function updateWindow(idx) {
     const d = Math.abs(i - idx);
     if (d <= 2) prefetchLink(s.item.key); // a tiny request: makes a swipe start without waiting for a link
     if (d <= 1) ensureVideo(s); //           cover picture only, no download yet
+    if (d <= 1) fitCaption(s); //            the description's cut depends on the screen's width
     else if (s.video) destroyVideo(s);
   });
   if (!neighboursOk) return;
@@ -1079,6 +1150,9 @@ function wireViewer() {
   window.addEventListener("resize", () => {
     // a turned phone or resized window: stay on the same video instead of landing between two
     if (viewer.open && activeIdx >= 0) trackEl.scrollLeft = activeIdx * trackEl.clientWidth;
+    slides.forEach((s, i) => {
+      if (Math.abs(i - activeIdx) <= 1) fitCaption(s);
+    });
   });
 
   speedBtn.addEventListener("click", (e) => {

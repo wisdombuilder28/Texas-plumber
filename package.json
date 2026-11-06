@@ -4,7 +4,9 @@
   "version": "1.0.2",
   "scripts": {
     "test": "node --test tests/engagement.test.js",
-    "test:browser": "node tests/e2e/run.js"
+    "test:browser": "node tests/e2e/run.js",
+    "bench:server": "node tests/bench/server-latency.js",
+    "bench:browser": "node tests/bench/browser-latency.js"
   },
   "engines": {
     "node": "22.x"
