@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
 <link rel="stylesheet" href="styles.css?v=18" />
-<link rel="stylesheet" href="work-videos.css?v=5" />
+<link rel="stylesheet" href="work-videos.css?v=6" />
 
 <!-- Google Analytics (GA4) -->
 <script>(function(){try{var h=location.hostname;if(h==="localhost"||h==="127.0.0.1"||/\.local$/.test(h)||(/\.vercel\.app$/.test(h)&&h!=="nd-flow-plumbing.vercel.app")||localStorage.getItem("nd_internal"))window["ga-disable-G-9LBTZMCXGV"]=true}catch(e){}})()</script>
@@ -168,15 +168,58 @@
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg>
   </button>
 
-  <div class="vid-controls">
-    <span id="vid-time" class="vid-time">0:00</span>
-    <input id="vid-seek" class="vid-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek" disabled />
-    <span id="vid-total" class="vid-time">0:00</span>
-    <button type="button" id="vid-speed" class="vid-ctl-btn vid-speed" aria-label="Playback speed">1.0x</button>
-    <button type="button" id="vid-mute" class="vid-ctl-btn vid-mute" aria-label="Mute" data-muted="0">
-      <svg class="vid-ico-on" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-      <svg class="vid-ico-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>
-    </button>
+  <!-- A thin gold progress line: it is the only thing left on screen while the controls have faded away. -->
+  <div class="vid-mini" aria-hidden="true"><i></i></div>
+
+  <!-- Playback controls. On a narrow screen: the progress bar on one row, the buttons under it. On a wide one: all on one row. -->
+  <div id="vid-controls" class="vid-controls">
+    <div class="vid-bar">
+      <div class="vid-row vid-row-seek">
+        <span id="vid-time" class="vid-time">0:00</span>
+        <input id="vid-seek" class="vid-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek" disabled />
+        <span id="vid-total" class="vid-time">0:00</span>
+      </div>
+      <div class="vid-row vid-row-btns">
+        <button type="button" id="vid-play" class="vid-ctl-btn vid-play-btn" aria-label="Play" data-playing="0">
+          <svg class="vid-ico-play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="vid-ico-pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
+        <div class="vid-tools">
+          <button type="button" id="vid-speed" class="vid-ctl-btn vid-speed" aria-label="Playback speed">1.0x</button>
+          <button type="button" id="vid-mute" class="vid-ctl-btn vid-mute" aria-label="Mute" data-muted="0">
+            <svg class="vid-ico-on" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            <svg class="vid-ico-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>
+          </button>
+          <!-- a volume slider, only drawn where there is a mouse (a phone's own volume keys do this) -->
+          <input id="vid-volume" class="vid-volume" type="range" min="0" max="100" step="5" value="100" aria-label="Volume" />
+          <!-- shown by videos-live.js only if the browser can go full screen (not on iPhones) -->
+          <button type="button" id="vid-fs" class="vid-ctl-btn vid-fs" aria-label="Full screen" data-fs="0" hidden>
+            <svg class="vid-ico-fs-on" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            <svg class="vid-ico-fs-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Read more": the full title and description in a sheet that slides up over the (paused, dimmed) video. -->
+  <div id="vid-sheet" class="vid-sheet" hidden>
+    <div id="vid-sheet-scrim" class="vid-sheet-scrim"></div>
+    <section class="vid-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="vid-sheet-title">
+      <div class="vid-sheet-head">
+        <span class="vid-sheet-grip" aria-hidden="true"></span>
+        <div class="vid-sheet-bar">
+          <p id="vid-sheet-meta" class="vid-sheet-meta"></p>
+          <button type="button" id="vid-sheet-close" class="vid-sheet-close" aria-label="Close description">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="vid-sheet-scroll">
+        <h2 id="vid-sheet-title" class="vid-sheet-title"></h2>
+        <p id="vid-sheet-text" class="vid-sheet-text"></p>
+      </div>
+    </section>
   </div>
 </dialog>
 

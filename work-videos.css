@@ -1,17 +1,28 @@
 /* work-videos.css
    The Recent Work: Videos page (work-videos.html). Loads after styles.css and reuses its colours,
    card look, filter pills and phone text scale (--ts). The page heading and intro use the shared
-   .section-header from styles.css, the same as the Images page. */
+   .section-header from styles.css, the same as the Images page.
+
+   Two parts:  1) the gallery cards   2) the full-screen player.
+   Every font size is written as calc(size * var(--ts)) like the rest of the site, so on a phone the text is drawn
+   at 85% of its design size (see styles.css). The sizes below are chosen so that, ON A PHONE, they come out as:
+   category / date 11px, title 16px, description 13px, "Read more" 13px. */
 
 /* The site's own display rules (flex, grid) would otherwise beat the "hidden" attribute. */
 .vid-wrap[hidden],
 .vid-wrap [hidden],
 .vid-viewer [hidden]{display:none !important;}
 
-/* ---------- the list ---------- */
-.vid-list{display:grid;gap:1rem;margin-top:1.5rem;}
-@media(min-width:560px){.vid-list{grid-template-columns:repeat(2,1fr);gap:1.15rem;}}
-@media(min-width:1100px){.vid-list{grid-template-columns:repeat(3,1fr);gap:1.25rem;}}
+/* =====================================================================================================
+   1. THE GALLERY
+   ===================================================================================================== */
+.vid-list{
+  --thumb:1 / 1; /* the picture area of EVERY card has this one shape, whatever shape the video is (1 / 1 is the balanced
+                    middle between a tall 9:16 phone video and a wide 16:9 one). Wider screens use 4 / 3, like the Images page. */
+  display:grid;gap:1rem;margin-top:1.5rem;
+}
+@media(min-width:560px){.vid-list{--thumb:4 / 3;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.15rem;}}
+@media(min-width:1100px){.vid-list{grid-template-columns:repeat(3,minmax(0,1fr));gap:1.25rem;}}
 
 .vid-item{
   display:flex;flex-direction:column;border-radius:1rem;overflow:hidden;
@@ -22,13 +33,21 @@
 .vid-item:hover{transform:translateY(-3px);box-shadow:0 4px 8px oklch(0.1 0.006 260/0.08),0 20px 40px -16px oklch(0.1 0.006 260/0.25);}
 @keyframes vidIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 
+/* The picture area. Two copies of the video's cover picture (a frame taken from that same video when it was uploaded):
+   .vid-bg is blown up, blurred and darkened to fill the whole area; .vid-thumb sits on top, shown whole (contain),
+   never stretched and never cropped. A tall video gets soft colour beside it instead of black bars, a wide one above and below.
+   A video that has no cover picture shows the dark panel below, with the play button on it. */
 .vid-media{
   position:relative;display:block;width:100%;padding:0;border:0;cursor:pointer;
-  aspect-ratio:4 / 3;overflow:hidden;background:var(--brand-black-deep);color:#fff;
+  aspect-ratio:var(--thumb);overflow:hidden;isolation:isolate;color:#fff;
+  background:radial-gradient(120% 90% at 50% 12%, oklch(0.27 0.025 82) 0%, var(--brand-black-deep) 72%);
 }
-.vid-media img{width:100%;height:100%;object-fit:cover;}
-/* A phone-shot (tall) video shows whole, with dark bars at the sides, rather than a cropped slice. */
-.vid-item[data-shape="portrait"] .vid-media img{object-fit:contain;}
+.vid-bg,.vid-thumb{position:absolute;max-width:none;pointer-events:none;}
+.vid-bg{
+  left:-12%;top:-12%;width:124%;height:124%; /* a little bigger than the area, so the blur's soft edge falls outside it */
+  object-fit:cover;filter:blur(18px) brightness(.55) saturate(1.25);
+}
+.vid-thumb{left:0;top:0;width:100%;height:100%;object-fit:contain;}
 .vid-media::after{content:"";position:absolute;inset:0;background:oklch(0.1 0.006 260/0);transition:background .2s ease;}
 .vid-media:hover::after{background:oklch(0.1 0.006 260/0.15);}
 .vid-media:focus-visible{outline:3px solid var(--brand-gold);outline-offset:-3px;}
@@ -36,26 +55,33 @@
   position:absolute;left:50%;top:50%;z-index:1;width:3.5rem;height:3.5rem;margin:-1.75rem 0 0 -1.75rem;
   display:grid;place-items:center;border-radius:50%;
   background:var(--brand-gold);color:var(--brand-black);
-  box-shadow:0 8px 22px -6px rgba(0,0,0,.55);transition:transform .18s ease;
+  box-shadow:0 8px 22px -6px rgba(0,0,0,.6),0 0 0 5px rgba(255,255,255,.2);transition:transform .18s ease;
 }
 .vid-media:hover .vid-play{transform:scale(1.08);}
 .vid-play svg{width:1.45rem;height:1.45rem;margin-left:.12rem;fill:currentColor;}
 .vid-dur{
   position:absolute;right:.6rem;bottom:.6rem;z-index:1;padding:.1rem .45rem;border-radius:.35rem;
-  background:rgba(0,0,0,.72);color:#fff;font-size:calc(.75rem * var(--ts));font-weight:700;
+  background:rgba(0,0,0,.72);color:#fff;font-size:calc(.75rem * var(--ts));font-weight:700;font-variant-numeric:tabular-nums;
 }
 
-.vid-body{padding:.9rem 1rem 1.05rem;display:flex;flex-direction:column;gap:.35rem;flex:1;min-width:0;}
+.vid-body{padding:.95rem 1.05rem 1rem;display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0;}
 .vid-label{
-  display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;
-  font-size:calc(.72rem * var(--ts));font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);
+  display:flex;align-items:center;flex-wrap:wrap;
+  font-size:calc(.82rem * var(--ts));font-weight:500;line-height:1.3;color:var(--muted-foreground);
 }
-.vid-label .dot{width:6px;height:6px;border-radius:50%;background:var(--brand-gold);flex-shrink:0;}
-.vid-title{font-size:calc(1rem * var(--ts));font-weight:700;line-height:1.3;overflow-wrap:anywhere;}
+.vid-label .dot{width:6px;height:6px;border-radius:50%;background:var(--brand-gold);flex-shrink:0;margin-right:.45rem;}
+.vid-cat{font-weight:700;color:var(--foreground);}
+.vid-label .work-cat-sep{margin:0 .35rem;}
+.vid-title{
+  font-size:calc(1.12rem * var(--ts));font-weight:700;line-height:1.28;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
 .vid-caption{
-  font-size:calc(.88rem * var(--ts));line-height:1.5;color:var(--foreground);overflow-wrap:anywhere;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+  font-size:calc(.92rem * var(--ts));line-height:1.5;color:var(--muted-foreground);overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
 }
+/* likes + views always sit at the bottom of the card, so a row of cards lines up whatever their text length */
+.vid-body .vid-stats{margin-top:auto;padding-top:.45rem;}
 
 .vid-more{display:flex;justify-content:center;margin-top:1.5rem;}
 .vid-more .work-filter-btn{min-height:2.75rem;padding-inline:1.25rem;}
@@ -66,10 +92,11 @@
    and each number is a span.vid-num followed by a span.vid-unit (" likes", " views").
    On a card the like button is the same pill as the one under the photos on the Images page (.like-btn in styles.css),
    so the look, the liked colour and the loading / retry states match, with the views beside it. Only the spacing and a
-   tap area that reaches 44px are set here. In the full-screen player the two become ONE capsule (further down). */
+   tap area that reaches 44px are set here. In the full-screen player the same markup is drawn as a column on the
+   right edge of the video (see "likes and views" in part 2). */
 .vid-stats{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.5rem;}
 .vid-engage{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;min-width:0;}
-.vid-sep{display:none;} /* the dot between the two is only drawn in the player */
+.vid-sep{display:none;} /* the dot between the two is not drawn */
 .vid-stats .like-btn{position:relative;align-self:center;margin-top:0;min-height:2.25rem;font-variant-numeric:tabular-nums;}
 .vid-stats .like-btn::after{content:"";position:absolute;inset:-.3rem -.15rem;} /* the pill stays compact; its tap area doesn't */
 .vid-stats .like-btn:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
@@ -84,17 +111,29 @@
 @keyframes vidPop{0%{transform:scale(1);}40%{transform:scale(1.32);}100%{transform:scale(1);}}
 .vid-like.pop .icon-sm{animation:vidPop .28s ease-out;}
 
-/* ---------- the full-screen player ----------
-   The pop-up fills the whole screen (edge to edge, under the status bar and notch). Each video is one slide in a
-   row that is swiped left / right (native scroll-snap, so it follows the finger like any phone app). The title and
-   description sit over the bottom of the video, above the progress bar. */
+/* =====================================================================================================
+   2. THE FULL-SCREEN PLAYER
+   The pop-up fills the whole screen (edge to edge, under the status bar and notch). Each video is one slide in a row
+   that is swiped left / right (native scroll-snap, so it follows the finger like any phone app).
+
+   Layers inside a slide, bottom to top:   backdrop (blurred cover picture) < video < shade < spinner / big play < stage
+   (the text and the likes / views) < problem message. The top row, the playback bar, the arrows and the "Read more"
+   sheet belong to the pop-up itself and sit above all of that.
+
+   The video is the star: it is always shown whole (never stretched, never cropped) and as large as the screen allows;
+   the blurred backdrop only fills what is left. The text is small and sits at the bottom left, the likes / views in a
+   column at the right edge, and ALL of it (plus the top row and the playback bar) fades away three seconds after a video
+   starts playing. A tap brings it back. While a video is paused, loading or failed, everything stays.
+   ===================================================================================================== */
 .vid-viewer{
-  --ctl-h:3.25rem;      /* height of the progress bar row (the safe-area inset is added on top) */
   --vid-gold:var(--brand-gold, oklch(0.75 0.135 82));
+  --ctl-h:calc(5.4rem + env(safe-area-inset-bottom, 0px)); /* height of the playback bar. videos-live.js measures the real one, this is the starting guess */
+  --rail-w:3.4rem;                                          /* width of the likes / views column */
   position:fixed;inset:0;width:100%;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;
   padding:0;border:0;overflow:hidden;background:#000;color:#fff;
 }
 .vid-viewer::backdrop{background:#000;}
+.vid-viewer button{touch-action:manipulation;}
 /* Locks the page behind the player. On <html>, never <body>: a body lock would un-stick the site header. */
 html.vid-open{overflow:hidden;}
 .vid-viewer[open]{display:block;animation:vidFade .18s ease both;}
@@ -109,17 +148,31 @@ html.vid-open{overflow:hidden;}
 .vid-track::-webkit-scrollbar{display:none;}
 .vid-slide{
   position:relative;flex:0 0 100%;width:100%;height:100%;overflow:hidden;background:#000;
+  isolation:isolate; /* the layers inside a slide only order themselves against each other */
   scroll-snap-align:center;scroll-snap-stop:always; /* one video per swipe, even on a hard flick */
   cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;
 }
+
+/* the blurred, darkened cover picture of the same video: it fills the bars around a video that doesn't match the screen */
+.vid-backdrop{
+  position:absolute;left:-15%;top:-15%;width:130%;height:130%;max-width:none;z-index:0;
+  object-fit:cover;filter:blur(30px) brightness(.5) saturate(1.3);pointer-events:none;
+}
 .vid-player{
-  position:absolute;inset:0;display:block;width:100%;height:100%;
-  object-fit:contain;background:#000;outline:0;
+  position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;
+  object-fit:contain;background:transparent;outline:0; /* transparent: the backdrop shows through the bars */
+}
+
+/* the soft dark fade at the bottom: it makes the text and the controls readable and melts into the picture */
+.vid-shade{
+  position:absolute;left:0;right:0;bottom:0;z-index:2;pointer-events:none;
+  height:calc(var(--ctl-h) + 10.5rem);max-height:72%;
+  background:linear-gradient(to top, rgba(0,0,0,.8) 0%, rgba(0,0,0,.66) 24%, rgba(0,0,0,.42) 50%, rgba(0,0,0,.18) 76%, rgba(0,0,0,0) 100%);
 }
 
 /* spinner: appears only if the video is still not moving after a moment, and says nothing unless it is really slow */
 .vid-busy{
-  position:absolute;inset:0;z-index:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:.9rem;
+  position:absolute;inset:0;z-index:3;display:none;flex-direction:column;align-items:center;justify-content:center;gap:.9rem;
   pointer-events:none;
 }
 .vid-slide.is-busy .vid-busy{display:flex;}
@@ -137,146 +190,137 @@ html.vid-open{overflow:hidden;}
 
 /* big play button: shown while a video is paused (tap the video to pause / play) */
 .vid-center{
-  position:absolute;left:50%;top:50%;z-index:1;width:4.5rem;height:4.5rem;margin:-2.25rem 0 0 -2.25rem;
+  position:absolute;left:50%;top:50%;z-index:3;width:4.5rem;height:4.5rem;margin:-2.25rem 0 0 -2.25rem;
   display:grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;
   opacity:0;transform:scale(.85);transition:opacity .15s ease, transform .15s ease;pointer-events:none;
 }
 .vid-center svg{width:2rem;height:2rem;margin-left:.2rem;fill:currentColor;}
 .vid-slide[data-state="paused"] .vid-center{opacity:1;transform:none;}
+.vid-viewer.has-sheet .vid-center{opacity:0;} /* not while the description sheet is open over the paused video */
 
 /* problem message (shown over the video) */
 .vid-status{
-  position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;
+  position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;
   padding:1.5rem;text-align:center;background:oklch(0.05 0.006 260 / .82);cursor:default;
   font-size:calc(.95rem * var(--ts));line-height:1.5;
 }
 .vid-status p{margin:0;max-width:22rem;}
 .vid-status .btn-accent{font-size:calc(.9rem * var(--ts));padding:.65rem 1.25rem;}
 
-/* title + description + likes / views over the bottom of the video.
-   Top to bottom: a small category / date label, the title, a short description (two lines that fit the screen's width,
-   then "Read more"), and ONE small capsule holding the like button and the view count. The block sits on a dark fade
-   that is strongest right behind the text, so it reads on a white frame as well as a black one, and it is kept compact
-   so most of the picture stays visible. It always ends above the progress bar (see --ctl-h), whatever the screen. */
+/* ---------- the stage: the text (bottom left) and the likes / views (right edge) ----------
+   On a phone the stage is the whole slide. On a wide screen, where a tall video is a narrow column in the middle, the stage
+   shrinks to the width that video is actually drawn at (--vr is the video's width / height), so the text and the buttons
+   stay next to the picture instead of drifting off to the edges of the screen. Taps fall through it to the video. */
+.vid-stage{
+  position:absolute;top:0;bottom:0;left:0;right:0;margin-inline:auto;z-index:4;pointer-events:none;
+  width:min(100%, max(20rem, calc(100vh * var(--vr, 1.7778))));
+  width:min(100%, max(20rem, calc(100dvh * var(--vr, 1.7778))));
+}
+
+/* the description: a small category / date line, the title (two lines at most), then one or two lines of text ending in
+   "Read more". It always ends above the playback bar (see --ctl-h) and never reaches under the likes / views column. */
 .vid-cap{
-  --fade:1.75rem; /* the soft top edge of the dark fade; the text starts below it, so no line sits in the thin part */
-  position:absolute;left:0;right:0;z-index:2;
-  bottom:calc(var(--ctl-h) + env(safe-area-inset-bottom, 0px));
-  padding:var(--fade) calc(.9rem + env(safe-area-inset-right, 0px)) .55rem calc(.9rem + env(safe-area-inset-left, 0px));
-  background:linear-gradient(to top, rgba(0,0,0,.8) 0, rgba(0,0,0,.68) calc(100% - var(--fade)), rgba(0,0,0,0) 100%);
-  cursor:default;pointer-events:none; /* taps on the text fall through to the video; only "Read more" and the heart are tappable */
-  text-shadow:0 1px 2px rgba(0,0,0,.8);
-}
-.vid-cap.is-open{
-  pointer-events:auto;
-  background:linear-gradient(to top, rgba(0,0,0,.92) 0, rgba(0,0,0,.84) calc(100% - var(--fade)), rgba(0,0,0,0) 100%);
-}
-.vid-cap-scroll,.vid-cap-row{max-width:34rem;margin-inline:auto;}
-/* opened up: the text scrolls inside its own box, so it can never grow into the top row or the progress bar */
-.vid-cap.is-open .vid-cap-scroll{
-  max-height:min(44vh, 19rem);max-height:min(44dvh, 19rem);
-  overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;
+  position:absolute;left:0;right:0;bottom:calc(var(--ctl-h) + .1rem);
+  padding:0 calc(var(--rail-w) + .9rem + env(safe-area-inset-right, 0px)) .45rem calc(.95rem + env(safe-area-inset-left, 0px));
+  cursor:default;pointer-events:none; /* taps on the text fall through to the video; only "Read more" is tappable */
+  text-shadow:0 1px 2px rgba(0,0,0,.8),0 0 14px rgba(0,0,0,.35);
 }
 .vid-cap-meta{
-  display:flex;align-items:center;gap:.4rem;margin:0;
-  font-size:calc(.81rem * var(--ts));font-weight:600;letter-spacing:.06em;line-height:1.2;text-transform:uppercase;
-  color:rgba(255,255,255,.88);
+  display:flex;align-items:center;margin:0;
+  font-size:min(calc(.82rem * var(--ts)), .75rem);font-weight:600;line-height:1.2;color:rgba(255,255,255,.9); /* 11-12px on every screen */
 }
-.vid-cap-meta::before{content:"";flex:none;width:.4rem;height:.4rem;border-radius:50%;background:var(--vid-gold);}
+.vid-cap-meta::before{content:"";flex:none;width:.4rem;height:.4rem;margin-right:.45rem;border-radius:50%;background:var(--vid-gold);}
+.vid-cap-date{font-weight:500;color:rgba(255,255,255,.72);}
+.vid-cap-date::before{content:"";display:inline-block;width:1px;height:.85em;margin:0 .5rem;vertical-align:-.08em;background:rgba(255,255,255,.45);}
 .vid-cap-title{
-  margin:.22rem 0 0;color:#fff;font-size:calc(1.2rem * var(--ts));font-weight:700;line-height:1.25;overflow-wrap:anywhere;
+  margin:.28rem 0 0;color:#fff;font-size:min(calc(1.18rem * var(--ts)), 1.125rem);font-weight:700;line-height:1.22;letter-spacing:-.01em;overflow-wrap:anywhere; /* 16-18px */
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
 }
-.vid-cap.is-open .vid-cap-title{display:block;overflow:visible;}
 .vid-cap-text{
-  margin:.3rem 0 0;color:rgba(255,255,255,.95);font-size:calc(1rem * var(--ts));line-height:1.4;
+  margin:.3rem 0 0;color:rgba(255,255,255,.93);font-size:min(calc(.96rem * var(--ts)), .875rem);line-height:1.4; /* 13-14px ("Read more" inherits it) */
   white-space:pre-line;overflow-wrap:anywhere;
 }
 .vid-readmore{
-  position:relative;display:inline;margin:0;padding:0;border:0;background:none;color:#fff;
+  position:relative;display:inline;margin:0;padding:0;border:0;background:none;color:var(--vid-gold);
   font:inherit;font-weight:700;cursor:pointer;pointer-events:auto;text-shadow:inherit;
-  text-decoration:underline;text-decoration-color:rgba(255,255,255,.5);text-underline-offset:.18em;
 }
-.vid-readmore::after{content:"";position:absolute;inset:-.6rem 0;} /* a fingertip-sized target: taller than the words (not wider, so it never sticks out past the text) */
+.vid-readmore::after{content:"";position:absolute;inset:-.85rem -.5rem;} /* a fingertip-sized target, taller than the words */
 .vid-readmore:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;border-radius:.2rem;}
 
-/* the engagement capsule:  ♥ 2 · ◉ 3  in one translucent dark pill. Only the heart takes taps; a tap anywhere else in
-   the row still pauses / plays the video, as it does everywhere else on the slide. The numbers say what they are in
-   the page for screen readers (and in the heart's own label); the words "likes" / "views" are drawn only where
-   there is room (see the wide-screen rules below). */
-.vid-cap-row{margin-top:.5rem;}
-.vid-stats--player{flex-wrap:nowrap;margin-top:0;gap:.5rem;pointer-events:none;}
-.vid-stats--player .vid-engage{
-  flex:none;flex-wrap:nowrap;gap:0;min-height:2.25rem;padding:0 .2rem;
-  border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(12,12,14,.64);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  text-shadow:none;font-variant-numeric:tabular-nums;
+/* ---------- likes and views: a column on the right edge of the video ----------
+   White icons (the heart turns rose when liked) in soft dark circles, each with its number under it. The heart is the only
+   thing that takes a tap, and it is a big one (about 54 x 66px); a tap anywhere else on the column does nothing, so it
+   can never pause the video by accident. The words "likes" / "views" are left for screen readers (the heart's own label
+   says what the number is). It sits above the playback bar and the text keeps clear of it. */
+.vid-rail{
+  position:absolute;right:calc(.55rem + env(safe-area-inset-right, 0px));bottom:calc(var(--ctl-h) + .6rem);
+  width:var(--rail-w);display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:default;
+  text-shadow:0 1px 3px rgba(0,0,0,.85);
 }
-.vid-stats--player .like-btn{
-  position:relative;align-self:stretch;margin:0;min-height:0;padding:0 .55rem 0 .6rem;gap:.35rem;
-  pointer-events:auto;border:0;border-radius:999px;background:transparent;color:#fff;
-  font-size:calc(1rem * var(--ts));font-weight:700;line-height:1;
+.vid-rail:empty{display:none;}
+.vid-rail .vid-stats--player{display:block;position:static;margin:0;pointer-events:none;}
+.vid-rail .vid-engage{
+  display:flex;flex-direction:column;align-items:center;flex-wrap:nowrap;gap:.7rem;min-height:0;
+  padding:0;border:0;border-radius:0;background:none;
 }
-.vid-stats--player .like-btn::after{inset:-.4rem -.1rem;} /* the capsule stays 36px tall; the tap area is about 49px */
-.vid-stats--player .like-btn:hover{background:rgba(255,255,255,.12);border-color:transparent;color:#fff;}
-.vid-stats--player .like-btn[aria-pressed="true"]{background:transparent;border-color:transparent;color:#ff8ea3;}
-.vid-stats--player .like-btn[aria-pressed="true"] .icon-sm{fill:currentColor;}
-.vid-stats--player .like-btn:focus-visible{outline:2px solid var(--vid-gold);outline-offset:1px;}
-.vid-stats--player .like-btn .icon-sm,.vid-stats--player .vid-views .icon-sm{width:1.05rem;height:1.05rem;}
-.vid-stats--player .vid-sep{display:block;padding:0 .05rem;color:rgba(255,255,255,.55);font-weight:700;line-height:1;}
-.vid-stats--player .vid-views{
-  gap:.35rem;padding:0 .75rem 0 .5rem;color:rgba(255,255,255,.94);
-  font-size:calc(1rem * var(--ts));font-weight:600;line-height:1;
+.vid-rail .vid-sep{display:none;}
+.vid-rail .like-btn,
+.vid-rail .like-btn:hover,
+.vid-rail .like-btn[aria-pressed="true"],
+.vid-rail .vid-views{
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:.22rem;
+  width:var(--rail-w);min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;
+  color:#fff;font-size:calc(.92rem * var(--ts));font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;
 }
-.vid-stats--player .vid-unit{
+.vid-rail .like-btn{pointer-events:auto;cursor:pointer;}
+.vid-rail .like-btn::after{content:"";position:absolute;inset:-.3rem -.1rem;} /* tap area: about 54 x 66px */
+.vid-rail .like-btn:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;border-radius:.8rem;}
+.vid-rail .like-btn .icon-sm,
+.vid-rail .vid-views .icon-sm{
+  box-sizing:border-box;width:2.85rem;height:2.85rem;padding:.72rem;border-radius:50%;
+  background:rgba(14,14,16,.48);color:#fff;text-shadow:none;
+}
+.vid-rail .like-btn[aria-pressed="true"]{color:#ff6b86;}
+.vid-rail .like-btn[aria-pressed="true"] .icon-sm{fill:currentColor;background:rgba(14,14,16,.58);}
+.vid-rail .like-btn .like-count,
+.vid-rail .vid-views-text,
+.vid-rail .vid-num{color:#fff;}
+.vid-rail .vid-unit{
   position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;
 }
-/* a message (like couldn't be saved) sits beside the capsule, so it doesn't push the text up */
-.vid-stats--player .vid-stats-note{
-  flex:1 1 0;min-width:0;font-size:calc(.9rem * var(--ts));line-height:1.25;color:#ffd9d4;text-shadow:0 1px 2px rgba(0,0,0,.85);
+/* a message (the like couldn't be saved) pops out to the left of the column for a few seconds, over the text */
+.vid-rail .vid-stats-note{
+  position:absolute;right:calc(100% + .35rem);bottom:0;flex:none;width:max-content;max-width:min(15rem, 60vw);
+  padding:.4rem .65rem;border-radius:.7rem;background:rgba(0,0,0,.78);
+  font-size:calc(.88rem * var(--ts));line-height:1.3;text-align:right;color:#ffd9d4;text-shadow:none;
 }
 
-/* wide screens (tablets, desktops): there is room, so the words come back */
-@media (min-width:640px){
-  .vid-cap-scroll,.vid-cap-row{max-width:36rem;}
-  .vid-stats--player .vid-unit{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;white-space:nowrap;}
-}
-
-/* a phone turned sideways has little height: one line of title, one of description, and the capsule at the right
-   edge of the same band instead of under the text, so the picture keeps as much room as possible */
-@media (max-height:520px) and (orientation:landscape){
-  .vid-cap{--fade:1.25rem;display:flex;align-items:flex-end;gap:.9rem;}
-  .vid-cap-scroll{flex:0 1 40rem;min-width:0;max-width:none;margin:0;}
-  .vid-cap-row{flex:0 0 auto;max-width:none;margin:0 0 0 auto;}
-  .vid-cap-title{-webkit-line-clamp:1;}
-  .vid-cap.is-open .vid-cap-scroll{max-height:min(46vh, 12rem);max-height:min(46dvh, 12rem);}
-}
-
-/* top row: video counter + close */
+/* ---------- top row: video counter + close ---------- */
 .vid-top{
-  position:absolute;top:0;left:0;right:0;z-index:5;pointer-events:none;
+  position:absolute;top:0;left:0;right:0;z-index:6;pointer-events:none;
   display:flex;align-items:center;justify-content:space-between;gap:1rem;
-  padding:calc(.75rem + env(safe-area-inset-top, 0px)) calc(.75rem + env(safe-area-inset-right, 0px)) 1.5rem calc(.9rem + env(safe-area-inset-left, 0px));
-  background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+  padding:calc(.65rem + env(safe-area-inset-top, 0px)) calc(.7rem + env(safe-area-inset-right, 0px)) 1.6rem calc(.9rem + env(safe-area-inset-left, 0px));
+  background:linear-gradient(to bottom, rgba(0,0,0,.5), rgba(0,0,0,.22) 55%, rgba(0,0,0,0));
 }
 .vid-count{
-  padding:.25rem .65rem;border-radius:999px;background:rgba(0,0,0,.45);
-  font-size:calc(.8rem * var(--ts));font-weight:700;font-variant-numeric:tabular-nums;
+  padding:.28rem .7rem;border-radius:999px;background:rgba(0,0,0,.42);
+  font-size:calc(.85rem * var(--ts));font-weight:700;font-variant-numeric:tabular-nums;
 }
+.vid-count:empty{display:none;}
 .vid-close{
-  pointer-events:auto;width:2.75rem;height:2.75rem;border-radius:50%;flex-shrink:0;
-  display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;transition:background .15s ease;
+  pointer-events:auto;width:2.75rem;height:2.75rem;margin-left:auto;border-radius:50%;flex-shrink:0;
+  display:grid;place-items:center;background:rgba(0,0,0,.42);color:#fff;transition:background .15s ease;
 }
 .vid-close:hover{background:rgba(255,255,255,.22);}
-.vid-close:focus-visible,.vid-nav:focus-visible,.vid-ctl-btn:focus-visible,.vid-seek:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;}
-.vid-close svg,.vid-nav svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+.vid-close:focus-visible,.vid-nav:focus-visible,.vid-ctl-btn:focus-visible,.vid-seek:focus-visible,.vid-volume:focus-visible,.vid-sheet-close:focus-visible{outline:2px solid var(--vid-gold);outline-offset:2px;}
+.vid-close svg,.vid-nav svg,.vid-sheet-close svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
 
 /* previous / next arrows: only where there is a mouse (phones swipe) */
 .vid-nav{display:none;}
 @media (hover:hover) and (pointer:fine){
   .vid-nav{
-    position:absolute;top:50%;z-index:5;width:3rem;height:3rem;margin-top:-1.5rem;border-radius:50%;
-    display:grid;place-items:center;background:rgba(0,0,0,.5);color:#fff;transition:background .15s ease, opacity .15s ease;
+    position:absolute;top:50%;z-index:6;width:3rem;height:3rem;margin-top:-1.5rem;border-radius:50%;
+    display:grid;place-items:center;background:rgba(0,0,0,.5);color:#fff;transition:background .15s ease, opacity .25s ease, visibility 0s linear 0s;
   }
   .vid-nav:hover{background:rgba(255,255,255,.25);}
   .vid-nav:disabled{opacity:0;pointer-events:none;}
@@ -284,28 +328,51 @@ html.vid-open{overflow:hidden;}
   .vid-nav-next{right:1rem;}
 }
 
-/* progress bar row */
+/* ---------- playback bar ----------
+   Narrow screens (phones): the progress bar, with the times at its ends, on one row; the buttons on the row under it
+   (play / pause at the left; speed, volume, full screen at the right). Wide screens: everything on one row. The switch looks
+   at the width of the bar itself (a container query), so a tall video in a narrow column on a desktop gets the phone layout.
+   No solid background: the shade behind it does the job and leaves the picture visible. */
 .vid-controls{
-  position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;align-items:center;gap:.5rem;
-  height:calc(var(--ctl-h) + env(safe-area-inset-bottom, 0px));
-  padding:0 calc(.6rem + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) calc(.9rem + env(safe-area-inset-left, 0px));
-  background:rgba(0,0,0,.55);
-  font-size:calc(.8rem * var(--ts));font-weight:600;font-variant-numeric:tabular-nums;
+  position:absolute;left:0;right:0;bottom:0;z-index:6;margin-inline:auto;
+  width:min(100%, max(26rem, calc(100vh * var(--vr, 1.7778))));
+  width:min(100%, max(26rem, calc(100dvh * var(--vr, 1.7778))));
+  container:vidctl / inline-size;
 }
-.vid-time{min-width:2.4ch;text-align:center;flex-shrink:0;}
-.vid-ctl-btn{
-  flex-shrink:0;min-width:2.5rem;height:2.5rem;padding:0 .4rem;border-radius:.6rem;
-  display:grid;place-items:center;color:#fff;font-weight:700;font-size:calc(.8rem * var(--ts));
+.vid-bar{
+  display:flex;flex-direction:column;
+  padding:0 calc(.6rem + env(safe-area-inset-right, 0px)) calc(.15rem + env(safe-area-inset-bottom, 0px)) calc(.9rem + env(safe-area-inset-left, 0px));
+  font-size:calc(.85rem * var(--ts));font-weight:600;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.65);
 }
-.vid-ctl-btn:hover{background:rgba(255,255,255,.14);}
-.vid-mute svg{width:1.3rem;height:1.3rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.vid-mute[data-muted="0"] .vid-ico-off,.vid-mute[data-muted="1"] .vid-ico-on{display:none;}
+.vid-row{display:flex;align-items:center;gap:.55rem;min-width:0;}
+.vid-row-seek{height:2.75rem;padding-right:.3rem;}
+.vid-row-btns{height:2.75rem;justify-content:space-between;margin:0 -.3rem 0 -.5rem;} /* the buttons have padding of their own: this lines their icons up with the text edge */
+.vid-tools{display:flex;align-items:center;gap:.1rem;}
+.vid-time{min-width:2.5ch;flex-shrink:0;}
+.vid-row-seek .vid-time:first-child{text-align:left;}
+.vid-row-seek .vid-time:last-child{text-align:right;}
 
-.vid-seek{
+.vid-ctl-btn{
+  flex-shrink:0;min-width:2.75rem;height:2.75rem;padding:0 .4rem;border-radius:.7rem;
+  display:grid;place-items:center;color:#fff;font-weight:700;font-size:calc(.85rem * var(--ts));
+  -webkit-tap-highlight-color:transparent;
+}
+@media (hover:hover){.vid-ctl-btn:hover{background:rgba(255,255,255,.14);}}
+.vid-ctl-btn svg{
+  width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));
+}
+.vid-play-btn svg{width:1.8rem;height:1.8rem;fill:currentColor;stroke:none;}
+.vid-play-btn[data-playing="1"] .vid-ico-play,.vid-play-btn[data-playing="0"] .vid-ico-pause{display:none;}
+.vid-mute[data-muted="0"] .vid-ico-off,.vid-mute[data-muted="1"] .vid-ico-on{display:none;}
+.vid-fs[data-fs="0"] .vid-ico-fs-off,.vid-fs[data-fs="1"] .vid-ico-fs-on{display:none;}
+
+.vid-seek,.vid-volume{
   --p:0%;--b:0%;
-  flex:1 1 auto;min-width:0;height:2.5rem;margin:0;padding:0;background:transparent;cursor:pointer;
+  margin:0;padding:0;background:transparent;cursor:pointer;
   -webkit-appearance:none;appearance:none;
 }
+.vid-seek{flex:1 1 auto;min-width:0;height:2.75rem;}
 .vid-seek:disabled{cursor:default;opacity:.55;}
 .vid-seek::-webkit-slider-runnable-track{
   height:.3rem;border-radius:999px;
@@ -315,11 +382,114 @@ html.vid-open{overflow:hidden;}
   height:.3rem;border-radius:999px;
   background:linear-gradient(to right, var(--vid-gold) var(--p), rgba(255,255,255,.6) var(--p), rgba(255,255,255,.6) var(--b), rgba(255,255,255,.22) var(--b));
 }
-.vid-seek::-webkit-slider-thumb{
+.vid-seek::-webkit-slider-thumb,.vid-volume::-webkit-slider-thumb{
   -webkit-appearance:none;appearance:none;width:1rem;height:1rem;margin-top:-.35rem;border:0;border-radius:50%;
   background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);
 }
-.vid-seek::-moz-range-thumb{width:1rem;height:1rem;border:0;border-radius:50%;background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);}
+.vid-seek::-moz-range-thumb,.vid-volume::-moz-range-thumb{width:1rem;height:1rem;border:0;border-radius:50%;background:var(--vid-gold);box-shadow:0 0 0 3px rgba(0,0,0,.3);}
+
+/* the volume slider: only where there is a mouse */
+.vid-volume{display:none;}
+@media (hover:hover) and (pointer:fine){
+  .vid-volume{display:block;width:5rem;height:2.75rem;margin:0 .35rem 0 .1rem;}
+  .vid-volume::-webkit-slider-runnable-track{height:.3rem;border-radius:999px;background:linear-gradient(to right, var(--vid-gold) var(--p), rgba(255,255,255,.28) var(--p));}
+  .vid-volume::-moz-range-track{height:.3rem;border-radius:999px;background:linear-gradient(to right, var(--vid-gold) var(--p), rgba(255,255,255,.28) var(--p));}
+}
+
+/* wide bar (about 544px and up): one row:  play  0:12  ———— progress ————  2:30  speed  volume  full screen */
+@container vidctl (min-width:34rem){
+  .vid-bar{flex-direction:row;align-items:center;gap:.5rem;height:calc(3.4rem + env(safe-area-inset-bottom, 0px));padding-bottom:calc(.1rem + env(safe-area-inset-bottom, 0px));}
+  .vid-row{display:contents;}
+  .vid-play-btn{order:-1;margin-left:-.5rem;}
+  .vid-seek{margin:0 .15rem;}
+  .vid-tools{margin-right:-.3rem;}
+}
+
+/* the thin gold line that stays while the rest has faded away */
+.vid-mini{
+  position:absolute;left:0;right:0;bottom:0;z-index:6;height:2px;background:rgba(255,255,255,.22);
+  opacity:0;pointer-events:none;transition:opacity .4s ease .15s;
+}
+.vid-mini i{display:block;height:100%;width:var(--p, 0%);background:var(--vid-gold);}
+.vid-viewer.is-idle .vid-mini{opacity:1;}
+.vid-viewer.has-sheet .vid-mini{opacity:0;}
+
+/* ---------- "Read more": the description sheet ----------
+   Slides up from the bottom over the dimmed video (which is paused while it is open and carries on when it closes).
+   Closes with the X, a tap on the dimmed video, the Esc key / back gesture, or by dragging the handle down. */
+.vid-sheet{position:absolute;inset:0;z-index:9;display:flex;align-items:flex-end;justify-content:center;}
+.vid-sheet-scrim{position:absolute;inset:0;background:rgba(0,0,0,.58);opacity:0;transition:opacity .22s ease;}
+.vid-sheet.is-open .vid-sheet-scrim{opacity:1;}
+.vid-sheet-panel{
+  position:relative;display:flex;flex-direction:column;width:100%;max-width:40rem;
+  max-height:min(74vh, 34rem);max-height:min(74dvh, 34rem);
+  border-radius:1.25rem 1.25rem 0 0;border-top:1px solid oklch(0.75 0.135 82 / .55);
+  background:oklch(0.17 0.006 260);color:#fff;box-shadow:0 -18px 40px -12px rgba(0,0,0,.65);
+  padding-bottom:env(safe-area-inset-bottom, 0px);
+  transform:translateY(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);
+}
+.vid-sheet.is-open .vid-sheet-panel{transform:none;}
+.vid-sheet-head{flex:none;touch-action:none;cursor:grab;} /* dragging this part down closes the sheet */
+.vid-sheet-grip{display:block;width:2.5rem;height:.25rem;margin:.55rem auto .1rem;border-radius:999px;background:rgba(255,255,255,.3);}
+.vid-sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:0 .6rem 0 1.25rem;min-height:2.75rem;}
+.vid-sheet-meta{
+  display:flex;align-items:center;margin:0;min-width:0;
+  font-size:calc(.85rem * var(--ts));font-weight:600;color:rgba(255,255,255,.85);
+}
+.vid-sheet-meta::before{content:"";flex:none;width:.4rem;height:.4rem;margin-right:.45rem;border-radius:50%;background:var(--vid-gold);}
+.vid-sheet-meta .vid-cap-date{color:rgba(255,255,255,.65);}
+.vid-sheet-close{
+  flex:none;width:2.75rem;height:2.75rem;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.1);color:#fff;transition:background .15s ease;
+}
+@media (hover:hover){.vid-sheet-close:hover{background:rgba(255,255,255,.2);}}
+.vid-sheet-scroll{
+  flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+  padding:.35rem 1.25rem 1.5rem;
+}
+.vid-sheet-scroll:focus-visible{outline:2px solid var(--vid-gold);outline-offset:-2px;}
+.vid-sheet-title{
+  margin:0 0 .75rem;padding-bottom:.75rem;border-bottom:1px solid rgba(255,255,255,.12);
+  color:#fff;font-size:calc(1.32rem * var(--ts));font-weight:700;line-height:1.25;letter-spacing:-.01em;overflow-wrap:anywhere;
+}
+.vid-sheet-text{
+  margin:0;color:rgba(255,255,255,.88);font-size:calc(1.04rem * var(--ts));line-height:1.65;
+  white-space:pre-line;overflow-wrap:anywhere;
+}
+
+/* ---------- controls that fade away ----------
+   videos-live.js puts .is-idle on the pop-up three seconds after a video starts playing (and takes it off at the next
+   touch, key press or mouse move). Fading is slow, appearing is quick, and nothing faded out can be tapped by accident. */
+.vid-top,.vid-controls,.vid-shade,.vid-cap,.vid-rail{transition:opacity .25s ease, visibility 0s linear 0s;}
+.vid-viewer.is-idle .vid-top,
+.vid-viewer.is-idle .vid-nav,
+.vid-viewer.is-idle .vid-controls,
+.vid-viewer.is-idle .vid-shade,
+.vid-viewer.is-idle .vid-cap,
+.vid-viewer.is-idle .vid-rail{
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .5s ease, visibility 0s linear .5s;
+}
+.vid-viewer.is-idle{cursor:none;}
+
+/* ---------- wide screens (tablets, desktops) ---------- */
+@media (min-width:640px){
+  .vid-viewer{--rail-w:3.6rem;}
+}
+
+/* ---------- a phone turned sideways (or any screen with little height) ----------
+   One line of title, a smaller likes / views column, and the progress bar goes onto one row (it is wide enough for that). */
+@media (max-height:520px){
+  .vid-viewer{--rail-w:3rem;}
+  .vid-cap{padding-bottom:.3rem;}
+  .vid-cap-title{-webkit-line-clamp:1;}
+  .vid-rail{bottom:calc(var(--ctl-h) + .4rem);}
+  .vid-rail .vid-engage{gap:.4rem;}
+  .vid-rail .like-btn .icon-sm,
+  .vid-rail .vid-views .icon-sm{width:2.3rem;height:2.3rem;padding:.58rem;}
+  .vid-rail .like-btn,.vid-rail .like-btn:hover,.vid-rail .like-btn[aria-pressed="true"],.vid-rail .vid-views{gap:.12rem;font-size:calc(.82rem * var(--ts));}
+  .vid-sheet-panel{max-height:88vh;max-height:88dvh;}
+}
 
 /* ?timing=1 on the page address shows the like / view measurements on screen (built by video-engagement-live.js, which
    says what each line means). A debugging aid: nothing here exists unless it was asked for. */
@@ -336,7 +506,11 @@ html.vid-open{overflow:hidden;}
   .vid-spin{animation:none;}
   .vid-play,.vid-media::after{transition:none;}
   .vid-viewer[open]{animation:none;}
-  .vid-center,.vid-close,.vid-nav{transition:none;}
+  .vid-center,.vid-close,.vid-nav,.vid-sheet-close{transition:none;}
+  .vid-top,.vid-controls,.vid-shade,.vid-cap,.vid-rail,.vid-mini,
+  .vid-viewer.is-idle .vid-top,.vid-viewer.is-idle .vid-nav,.vid-viewer.is-idle .vid-controls,
+  .vid-viewer.is-idle .vid-shade,.vid-viewer.is-idle .vid-cap,.vid-viewer.is-idle .vid-rail{transition:none;}
+  .vid-sheet-scrim,.vid-sheet-panel{transition:none;}
   .vid-stats .like-btn.is-loading .like-count{animation:none;}
   .vid-stats .like-btn .icon-sm{transition:none;}
   .vid-like.pop .icon-sm{animation:none;}

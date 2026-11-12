@@ -13,7 +13,14 @@
 // If a video won't play, the page says why as far as it can tell (no connection to the video server, or the
 // device couldn't play it) instead of always blaming the connection.
 //
-// Each card shows only the small cover picture saved with the video, so the page costs almost nothing
+// The video is the star of the player: it is always shown whole (never stretched, never cropped) over a blurred, darkened copy
+// of its own cover picture, whatever its shape (tall, wide, square). The text is small and sits at the bottom left, the like
+// button and the view count in a column at the right edge, and a long description opens in a sheet ("Read more") that
+// pauses the video while it is open. Three seconds after a video starts playing, the text and the controls fade away;
+// a touch brings them back, and they stay while the video is paused, loading or failed.
+//
+// Each card shows only the small cover picture saved with the video (whole, over a blurred copy of itself, in an area of
+// one fixed shape so tall, wide and square videos sit in the same neat grid), so the page costs almost nothing
 // until somebody presses play. Videos load six at a time; "Show more videos" fetches the next six (and the
 // player fetches them by itself when you swipe near the end).
 //
@@ -69,6 +76,8 @@ const SETTLE_MS = 90; //          how long the swipe row must be still before th
 const SPINNER_DELAY_MS = 450; //  the spinner only shows if a video still isn't moving after this long
 const SLOW_HINT_MS = 7000; //     ...and says "slow connection" only after this long
 const WARM_NEXT_AHEAD_S = 15; //  seconds buffered ahead of the playing video before the next one is warmed up
+const IDLE_MS = 3000; //          the text and controls fade away this long after a video starts playing (or after the last touch)
+const SHEET_MS = 280; //          how long the "Read more" sheet takes to slide away (the transition in work-videos.css is .26s)
 
 // KEEP IN SYNC with admin/js/videos-admin.js (CATEGORIES) and firestore.rules.
 const CATEGORIES = ["showcase", "before-after", "testimonial"];
@@ -94,6 +103,22 @@ const timeEl = $("vid-time");
 const totalEl = $("vid-total");
 const speedBtn = $("vid-speed");
 const muteBtn = $("vid-mute");
+// Newer parts of the player. Each one is optional: if an older copy of work-videos.html is cached without it, the player still works.
+const topEl = viewer ? viewer.querySelector(".vid-top") : null;
+const controlsEl = $("vid-controls");
+const playBtn = $("vid-play");
+const volumeEl = $("vid-volume");
+const fsBtn = $("vid-fs");
+const miniEl = viewer ? viewer.querySelector(".vid-mini") : null;
+const sheetEl = $("vid-sheet"); //            "Read more": the sheet that slides up with the whole title and description
+const sheetPanel = sheetEl ? sheetEl.querySelector(".vid-sheet-panel") : null;
+const sheetHead = sheetEl ? sheetEl.querySelector(".vid-sheet-head") : null;
+const sheetScroll = sheetEl ? sheetEl.querySelector(".vid-sheet-scroll") : null;
+const sheetScrim = $("vid-sheet-scrim");
+const sheetCloseBtn = $("vid-sheet-close");
+const sheetMeta = $("vid-sheet-meta");
+const sheetTitle = $("vid-sheet-title");
+const sheetText = $("vid-sheet-text");
 
 const items = []; // { id, key, title, caption, category, poster, dur, w, h, pw, ph, date, el }
 let lastDoc = null; // the last video shown so far: the next page starts after it
@@ -173,9 +198,14 @@ function toItem(snap) {
   };
 }
 
-function isPortrait(item) {
-  const ratio = item.pw && item.ph ? item.pw / item.ph : item.w && item.h ? item.w / item.h : 1.78;
-  return ratio < 0.95;
+// The real shape of a video. It comes from what is already stored with it: the size of the video, or of its cover picture (a frame
+// of the same video, so the same shape). Once a video has loaded in the player, the browser's own numbers replace these (see
+// applyShape). Nothing is assumed: a video with no size at all is "unknown" and is simply drawn whole, whatever shape it turns out to be.
+const ratioOf = (w, h) => (w > 0 && h > 0 ? w / h : 0);
+const itemRatio = (item) => ratioOf(item.w, item.h) || ratioOf(item.pw, item.ph);
+function shapeOf(ratio) {
+  if (!ratio) return "unknown";
+  return ratio < 0.9 ? "portrait" : ratio > 1.1 ? "landscape" : "square";
 }
 
 // ---------- the cards ----------
@@ -197,18 +227,27 @@ const cardObserver =
 function buildCard(item) {
   const card = el("article", "vid-item");
   card.dataset.category = item.category;
-  if (isPortrait(item)) card.dataset.shape = "portrait";
+  card.dataset.shape = shapeOf(itemRatio(item));
 
   const media = el("button", "vid-media");
   media.type = "button";
   media.setAttribute("aria-label", `Play video: ${item.title}${item.dur ? ", " + clock(item.dur) : ""}`);
   if (item.poster) {
-    const img = el("img");
-    img.src = item.poster;
-    img.alt = "";
-    img.loading = "lazy";
-    img.decoding = "async";
-    media.appendChild(img);
+    // The cover picture twice: a blown-up, blurred, darkened copy that fills the whole area, and the picture itself on top, shown
+    // whole (work-videos.css). A tall or a wide video gets soft colour from its own picture beside it, never bare black bars.
+    const bg = el("img", "vid-bg");
+    const img = el("img", "vid-thumb");
+    [bg, img].forEach((node) => {
+      node.src = item.poster;
+      node.alt = "";
+      node.loading = "lazy";
+      node.decoding = "async";
+    });
+    // No size stored with this video? The picture knows its own shape once it has loaded.
+    if (!itemRatio(item)) {
+      img.addEventListener("load", () => (card.dataset.shape = shapeOf(ratioOf(img.naturalWidth, img.naturalHeight))), { once: true });
+    }
+    media.append(bg, img);
   }
   const badge = el("span", "vid-play");
   badge.appendChild(playIcon());
@@ -225,8 +264,12 @@ function buildCard(item) {
   const label = el("div", "vid-label");
   const dot = el("span", "dot");
   dot.setAttribute("aria-hidden", "true");
-  label.appendChild(dot);
-  label.appendChild(el("span", "vid-cat", [CARD_LABEL[item.category], item.date].filter(Boolean).join(" · ")));
+  label.append(dot, el("span", "vid-cat", CARD_LABEL[item.category]));
+  if (item.date) {
+    const sep = el("span", "work-cat-sep", "·");
+    sep.setAttribute("aria-hidden", "true");
+    label.append(sep, el("span", "vid-date", item.date));
+  }
   body.appendChild(label);
   body.appendChild(el("h3", "vid-title", item.title));
   if (item.caption) body.appendChild(el("p", "vid-caption", item.caption));
@@ -464,6 +507,11 @@ let speedIdx = 0;
 let neighboursOk = false; //  true once the current video is playing smoothly: only then are the next ones loaded
 let settleTimer = 0;
 let scrubbing = false;
+let volumeLevel = 1; //       0 to 1: the volume slider (drawn only where there is a mouse). The speaker button mutes on top of it.
+let sheetOpen = false; //     the "Read more" sheet is open (see openSheet)
+let idleTimer = 0; //         counts down to the moment the text and controls fade away
+let overControls = false; //  a mouse is over the playback bar, which keeps it on screen
+let wokeByTap = false; //     this touch found the controls faded away: it only brings them back, it doesn't also pause the video
 
 const visibleItems = () => items.filter((it) => activeFilter === "all" || it.category === activeFilter);
 const activeSlide = () => slides[activeIdx] || null;
@@ -474,10 +522,23 @@ function durationOf(slide) {
   return v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (slide && slide.item.dur) || 0;
 }
 
+// Sound for a <video>: the speaker button decides whether it is on (soundOn), the volume slider how loud (volumeLevel).
+function applyAudio(v) {
+  try {
+    v.volume = volumeLevel; // some phones ignore this: their own volume keys do the job
+  } catch (e) {
+    /* not settable */
+  }
+  v.muted = !soundOn;
+}
+
 // ----- one slide -----
-// The description is cut after two lines with "Read more", like a WhatsApp status; the full text opens in place. How
-// much fits in two lines depends on the width of the screen, so the cut is measured (fitCaption) once the slide is on
-// screen and again whenever the width changes. previewText is the rough, by-characters cut that stands in until then.
+// What is written over the bottom of the video: a small category / date line, the title (two lines at most) and the start of the
+// description, ending in "Read more", which opens the whole text in a sheet (openSheet). The likes and views go in the "rail", a
+// column at the right edge (buildSlide fills it as soon as the likes / views code is here).
+// The description is cut after two lines. How much fits in two lines depends on the width of the screen, so the cut is measured
+// (fitCaption) once the slide is on screen and again whenever the width changes. previewText is the rough, by-characters cut that
+// stands in until then. A title that is longer than its own two lines gets the "Read more" button too, so nothing is ever unreadable.
 const CAPTION_LINES = 2; //       lines of description shown before "Read more"
 const CAPTION_LINES_SHORT = 1; // ...on a screen with little height (a phone turned sideways, a very small phone), so the picture keeps its room
 const shortScreen = () => typeof matchMedia === "function" && matchMedia("(max-height: 520px)").matches;
@@ -496,103 +557,101 @@ function lineHeightOf(node) {
   return Number.isFinite(px) ? px : (parseFloat(style.fontSize) || 16) * 1.4;
 }
 
-function buildCaption(item) {
+function buildInfo(item, onMore) {
+  const stage = el("div", "vid-stage");
   const cap = el("div", "vid-cap");
-  const inner = el("div", "vid-cap-scroll");
-  const meta = [CARD_LABEL[item.category], item.date].filter(Boolean).join(" · ");
-  if (meta) inner.appendChild(el("p", "vid-cap-meta", meta));
-  inner.appendChild(el("h3", "vid-cap-title", item.title));
-  if (item.caption) {
-    const full = item.caption;
-    const text = el("p", "vid-cap-text");
-    text.id = `vid-cap-${item.id}`;
-    const body = document.createTextNode("");
-    const more = el("button", "vid-readmore", "Read more");
-    more.type = "button";
-    more.setAttribute("aria-controls", text.id);
-    let short = previewText(full); // what shows before "Read more" (null: the whole text fits, no button)
-    let open = false;
-    let fitted = ""; //                what `short` was last measured for: "<width>x<lines>"
+  const rail = el("div", "vid-rail");
 
-    const draw = () => {
-      if (open) body.nodeValue = full + " "; // (the space keeps the button off the last word, as it does in the cut text)
-      else body.nodeValue = short || full;
-      more.hidden = !open && !short;
-      more.textContent = open ? "Show less" : "Read more";
-      more.setAttribute("aria-expanded", open ? "true" : "false");
-    };
+  const meta = el("p", "vid-cap-meta");
+  meta.appendChild(el("span", "vid-cap-cat", CARD_LABEL[item.category]));
+  if (item.date) meta.appendChild(el("span", "vid-cap-date", item.date));
+  const title = el("h3", "vid-cap-title", item.title);
 
-    // Finds the longest start of the description that, with "…" and the button, still fits in two lines at the
-    // width the text has right now (a cut at a word end, by halving, so it is a handful of measurements).
-    cap.fit = () => {
-      if (open) return;
-      const width = Math.round(text.clientWidth);
-      if (!width) return; // not laid out (yet)
-      const lines = shortScreen() ? CAPTION_LINES_SHORT : CAPTION_LINES;
-      const key = `${width}x${lines}`;
-      if (key === fitted) return;
-      fitted = key;
-      const limit = lineHeightOf(text) * lines + 1;
-      const fits = () => text.getBoundingClientRect().height <= limit;
-      more.hidden = true;
-      body.nodeValue = full;
+  const full = item.caption;
+  const text = el("p", "vid-cap-text");
+  const body = document.createTextNode("");
+  const more = el("button", "vid-readmore", "Read more");
+  more.type = "button";
+  more.setAttribute("aria-haspopup", "dialog");
+  text.append(body, more);
+
+  let short = full ? previewText(full) : null; // what shows before "Read more" (null: the whole text fits, no button)
+  let titleCut = false; //                        the title is longer than its lines
+  let fitted = ""; //                             what `short` was last measured for: "<width>x<lines>"
+
+  const draw = () => {
+    body.nodeValue = full ? short || full : "";
+    more.hidden = !(short || titleCut);
+    text.hidden = !full && more.hidden;
+  };
+
+  // Finds the longest start of the description that, with "…" and the button, still fits in the lines allowed at the
+  // width the text has right now (a cut at a word end, by halving, so it is a handful of measurements).
+  const fit = () => {
+    const width = Math.round(title.clientWidth);
+    if (!width) return; // not laid out (yet)
+    const lines = shortScreen() ? CAPTION_LINES_SHORT : CAPTION_LINES;
+    const key = `${width}x${lines}`;
+    if (key === fitted) return;
+    fitted = key;
+    titleCut = title.scrollHeight > title.clientHeight + 1;
+    if (!full) {
+      draw();
+      return;
+    }
+    text.hidden = false;
+    const limit = lineHeightOf(text) * lines + 1;
+    const fits = () => text.getBoundingClientRect().height <= limit;
+    more.hidden = true;
+    body.nodeValue = full;
+    if (fits()) {
+      short = null;
+      draw();
+      return;
+    }
+    more.hidden = false;
+    const ends = [];
+    for (const m of full.matchAll(/\s+/g)) ends.push(m.index);
+    let lo = 0;
+    let hi = ends.length - 1;
+    let best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      body.nodeValue = full.slice(0, ends[mid]).trimEnd() + "… ";
       if (fits()) {
-        short = null;
-        draw();
-        return;
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
       }
-      more.hidden = false;
-      more.textContent = "Read more";
-      const ends = [];
-      for (const m of full.matchAll(/\s+/g)) ends.push(m.index);
-      let lo = 0;
-      let hi = ends.length - 1;
-      let best = -1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        body.nodeValue = full.slice(0, ends[mid]).trimEnd() + "… ";
-        if (fits()) {
-          best = mid;
-          lo = mid + 1;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      short = (best >= 0 ? full.slice(0, ends[best]).trimEnd() : full.slice(0, 24).trimEnd()) + "… ";
-      draw();
-    };
-
-    more.addEventListener("click", (e) => {
-      e.stopPropagation();
-      open = !open;
-      cap.classList.toggle("is-open", open);
-      if (!open) {
-        inner.scrollTop = 0;
-        fitted = ""; // the width may have changed while it was open: measure again
-      }
-      draw();
-      if (!open) cap.fit();
-    });
-    text.append(body, more);
+    }
+    short = (best >= 0 ? full.slice(0, ends[best]).trimEnd() : full.slice(0, 24).trimEnd()) + "… ";
     draw();
-    inner.appendChild(text);
-  }
-  cap.appendChild(inner);
-  // The like button and the view count sit under the description, outside the part that scrolls when it is opened up.
-  withEngagement((m) => {
-    const stats = m.buildStats(item, { player: true });
-    const row = el("div", "vid-cap-row");
-    row.appendChild(stats.el);
-    cap.appendChild(row);
-    cap.releaseStats = stats.release; // called when the player closes
+  };
+
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onMore(e);
   });
-  return cap;
+  draw();
+  cap.append(meta, title, text);
+  stage.append(cap, rail);
+  return { stage, rail, fit };
 }
 
-// Measures the description of a slide that is (about to be) on screen.
+// Measures the text of a slide that is (about to be) on screen.
 function fitCaption(s) {
-  const cap = s && s.el.querySelector(".vid-cap");
-  if (cap && typeof cap.fit === "function") cap.fit();
+  if (s && s.info) s.info.fit();
+}
+
+// The shape of a slide's video: --vr (width / height) lets the text and the likes / views hug a narrow, tall video on a wide screen
+// (work-videos.css), and data-shape names it. Called with the stored size at first, and again with the browser's own once loaded.
+function applyShape(s, ratio) {
+  s.ratio = ratio > 0 ? Math.min(3.5, Math.max(0.3, ratio)) : 0;
+  s.el.dataset.shape = shapeOf(ratio);
+  if (s.ratio) s.el.style.setProperty("--vr", s.ratio.toFixed(4));
+  else s.el.style.removeProperty("--vr");
+  if (s === activeSlide()) syncRatio();
 }
 
 function buildSlide(item) {
@@ -600,6 +659,17 @@ function buildSlide(item) {
   slide.setAttribute("role", "group");
   slide.setAttribute("aria-roledescription", "slide");
   slide.dataset.state = "idle";
+
+  // The same video's cover picture, blurred and darkened, behind it: it fills whatever the video itself doesn't cover (a tall video on
+  // a wide screen, a wide one on a phone) instead of bare black. Its picture is only loaded while the slide is on screen or next to it.
+  let backdrop = null;
+  if (item.poster) {
+    backdrop = el("img", "vid-backdrop");
+    backdrop.alt = "";
+    backdrop.decoding = "async";
+  }
+  const shade = el("div", "vid-shade"); // the soft dark fade at the bottom that keeps the text and the controls readable
+  shade.setAttribute("aria-hidden", "true");
 
   const busy = el("div", "vid-busy");
   busy.appendChild(el("span", "vid-spin"));
@@ -619,16 +689,22 @@ function buildSlide(item) {
   retry.type = "button";
   errBox.append(errText, retry);
 
-  slide.append(busy, center, buildCaption(item), errBox);
+  const info = buildInfo(item, (e) => openSheet(s, e));
+  slide.append(...[backdrop, shade, busy, center, info.stage, errBox].filter(Boolean));
 
   const s = {
     item,
     el: slide,
     video: null,
+    backdrop,
+    info,
     busy,
     slow,
     errBox,
     errText,
+    ratio: 0, //          width / height of the video (0: not known yet)
+    dead: false, //       the player was closed: the likes / views code, if it arrives late, must not touch this slide
+    releaseStats: null, // stops the like / view numbers following this slide (see video-engagement-live.js)
     state: "idle", //     idle | loading | playing | paused | error
     wantPlay: false, //   we are trying to have this one playing (cleared when swiped away or paused)
     errored: false,
@@ -646,15 +722,75 @@ function buildSlide(item) {
 
   retry.addEventListener("click", () => retrySlide(s));
   slide.addEventListener("click", (e) => {
-    if (e.target.closest(".vid-cap, .vid-status, button")) return; // text, the error box and buttons are not "tap the video"
+    // The error box, the likes / views column, "Read more" and buttons are not "tap the video".
+    if (e.target.closest(".vid-status, .vid-rail, .vid-readmore, button")) return;
+    if (wokeByTap) {
+      wokeByTap = false; // the text and controls had faded away: this touch only brought them back
+      return;
+    }
     toggleSlide(s);
+  });
+  applyShape(s, itemRatio(item));
+  // The like button and the view count: one set per slide, built once, in the column at the right edge.
+  withEngagement((m) => {
+    if (s.dead) return;
+    const stats = m.buildStats(item, { player: true });
+    info.rail.appendChild(stats.el);
+    s.releaseStats = stats.release; // called when the player closes
   });
   return s;
 }
 
 function setState(s, state) {
+  const changed = s.state !== state;
   s.state = state;
   s.el.dataset.state = state;
+  if (changed && s === activeSlide()) onActiveState();
+}
+
+// The state of the video on screen changed (loading, playing, paused, failed): the play button follows it, and the text and
+// controls stay on screen at every state except "playing".
+function onActiveState() {
+  syncPlayButton();
+  const s = activeSlide();
+  if (s && s.state === "playing") armIdle();
+  else showControls();
+}
+
+// ----- text and controls that fade away -----
+// While a video plays, everything laid over it (the top row, the text, the likes / views, the playback bar) fades out IDLE_MS
+// after it starts, leaving only a thin progress line, so the picture is alone on screen. Any touch, mouse move or key press brings
+// it back. It never fades while the video is paused, loading or failed, while the "Read more" sheet is open, while the progress
+// bar is being dragged, or while a mouse is over the playback bar. (work-videos.css does the fading: the .is-idle class on the pop-up.)
+// A video that stalls and carries on does not bring it back: only a change of state, or the visitor, does.
+function autoHideAllowed() {
+  const s = activeSlide();
+  return viewer.open && !!s && s.state === "playing" && !s.errored && !sheetOpen && !scrubbing && !overControls;
+}
+
+function showControls() {
+  clearTimeout(idleTimer);
+  idleTimer = 0;
+  viewer.classList.remove("is-idle");
+}
+
+function armIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = 0;
+  if (!autoHideAllowed()) return;
+  idleTimer = setTimeout(() => {
+    idleTimer = 0;
+    if (!autoHideAllowed()) return;
+    // Keyboard focus on something that is about to vanish moves to the video, so the keys (space, arrows) keep working.
+    const focused = document.activeElement;
+    if (focused && focused !== trackEl && viewer.contains(focused)) trackEl.focus({ preventScroll: true });
+    viewer.classList.add("is-idle");
+  }, IDLE_MS);
+}
+
+function wake() {
+  showControls();
+  armIdle();
 }
 
 // Spinner: waits a moment before showing (a video that starts at once never shows one) and only talks if it is slow.
@@ -701,11 +837,11 @@ function ensureVideo(s) {
   v.setAttribute("disableremoteplayback", "");
   v.controls = false;
   v.preload = "none"; // the cover picture only, until this slide is told to load
-  v.muted = !soundOn;
+  applyAudio(v);
   v.setAttribute("aria-label", s.item.title);
   if (s.item.poster) v.poster = s.item.poster;
   wireVideo(s, v);
-  s.el.insertBefore(v, s.el.firstChild);
+  s.el.insertBefore(v, s.backdrop ? s.backdrop.nextSibling : s.el.firstChild); // above the blurred backdrop, below everything else
   s.video = v;
   // The view counter only listens: it counts a view after 5 real seconds of playback, and can't touch the video.
   withEngagement((m) => {
@@ -752,6 +888,11 @@ function wireVideo(s, v) {
       }
     }
     s.resumeAt = 0;
+    // The browser now knows the video's real shape: use it (it replaces the stored size, or the guess when there was none).
+    if (v.videoWidth && v.videoHeight) {
+      applyShape(s, v.videoWidth / v.videoHeight);
+      fitCaption(s); // the text hugs the video's width, so its cut may change
+    }
     if (isActive()) syncControls();
   });
   v.addEventListener("durationchange", () => {
@@ -764,7 +905,7 @@ function wireVideo(s, v) {
     if (live() && !v.paused) setBusy(s, false);
   });
   v.addEventListener("playing", () => {
-    if (!live()) return;
+    if (!live() || v.paused) return; // (a "playing" that was already on its way when the video was paused is stale: ignore it)
     setBusy(s, false);
     setState(s, "playing");
     if (!s.played) {
@@ -853,7 +994,7 @@ async function loadSource(s, { fresh = false, play = false } = {}) {
 function tryPlay(s) {
   const v = s.video;
   if (!v) return;
-  v.muted = !soundOn;
+  applyAudio(v);
   v.playbackRate = SPEEDS[speedIdx];
   const started = v.play();
   if (started && typeof started.catch === "function") {
@@ -941,6 +1082,16 @@ async function giveUp(s, code) {
 }
 
 // ----- which videos hold a <video> right now -----
+function showBackdrop(s, on) {
+  const img = s.backdrop;
+  if (!img) return;
+  if (on) {
+    if (!img.getAttribute("src")) img.src = s.item.poster;
+  } else if (img.getAttribute("src")) {
+    img.removeAttribute("src"); // a long list doesn't keep a decoded picture for every slide
+  }
+}
+
 function updateWindow(idx) {
   slides.forEach((s, i) => {
     const d = Math.abs(i - idx);
@@ -948,6 +1099,7 @@ function updateWindow(idx) {
     if (d <= 1) ensureVideo(s); //           cover picture only, no download yet
     if (d <= 1) fitCaption(s); //            the description's cut depends on the screen's width
     else if (s.video) destroyVideo(s);
+    showBackdrop(s, d <= 1); //              the blurred cover picture behind the video: only held for the slides on or next to the screen
   });
   if (!neighboursOk) return;
   [idx + 1, idx - 1].forEach((i) => {
@@ -1047,8 +1199,35 @@ function syncControls() {
   countEl.textContent = slides.length > 1 ? `${activeIdx + 1} / ${slides.length}` : "";
   prevBtn.disabled = activeIdx <= 0;
   nextBtn.disabled = activeIdx >= slides.length - 1;
+  syncPlayButton();
+  syncVolume();
+  syncRatio();
   syncProgress();
   syncBuffered();
+}
+
+// The play / pause button shows what a tap will do: pause while the video is playing (or on its way to playing), play otherwise.
+function syncPlayButton() {
+  const s = activeSlide();
+  if (!playBtn || !s) return;
+  const on = !!s.wantPlay;
+  playBtn.dataset.playing = on ? "1" : "0";
+  playBtn.setAttribute("aria-label", on ? "Pause" : "Play");
+  playBtn.disabled = s.errored; // a video that failed has the "Try again" button instead
+}
+
+function syncVolume() {
+  if (!volumeEl) return;
+  const shown = soundOn ? Math.round(volumeLevel * 100) : 0;
+  volumeEl.value = String(shown);
+  volumeEl.style.setProperty("--p", `${shown}%`);
+}
+
+// The controls at the bottom are as wide as the video on screen (a tall video on a wide screen is a narrow column).
+function syncRatio() {
+  const s = activeSlide();
+  if (s && s.ratio) viewer.style.setProperty("--vr", s.ratio.toFixed(4));
+  else viewer.style.removeProperty("--vr");
 }
 
 function syncProgress() {
@@ -1059,6 +1238,7 @@ function syncProgress() {
   const p = dur ? Math.min(1, t / dur) : 0;
   seekEl.value = String(Math.round(p * 1000));
   seekEl.style.setProperty("--p", `${(p * 100).toFixed(2)}%`);
+  if (miniEl) miniEl.style.setProperty("--p", `${(p * 100).toFixed(2)}%`); // the thin line that stays when the controls have faded
   timeEl.textContent = clock(t);
   seekEl.setAttribute("aria-valuetext", dur ? `${clock(t)} of ${clock(dur)}` : clock(t));
 }
@@ -1084,6 +1264,103 @@ function seekTo() {
   }
 }
 
+// ----- "Read more": the sheet with the whole title and description -----
+// It slides up over the dimmed video. The video is paused while it is open and carries on when it closes, if it was playing (a
+// video that was already paused stays paused). Everything behind it is made inert, so a keyboard or a screen reader stays inside
+// the sheet. It closes with its X, a tap on the dimmed video, the Esc key / back gesture, or by pulling the handle down.
+let sheetSlide = null; //   the slide the sheet is about
+let sheetResume = false; // the video was playing (or on its way to playing) when the sheet opened
+let sheetOpener = null; //  the "Read more" button to give focus back to, when it was a keyboard that opened the sheet
+let sheetTimer = 0;
+let sheetDrag = null;
+
+function setBehindInert(on) {
+  [trackEl, topEl, prevBtn, nextBtn, controlsEl].forEach((node) => {
+    if (!node) return;
+    if (on) node.setAttribute("inert", "");
+    else node.removeAttribute("inert");
+  });
+}
+
+function openSheet(s, e) {
+  if (!sheetEl || !sheetPanel || sheetOpen || s !== activeSlide()) return;
+  sheetOpen = true;
+  sheetSlide = s;
+  sheetOpener = e && e.detail === 0 ? document.activeElement : null; // a click made with the keyboard has detail 0
+  sheetResume = !!s.wantPlay;
+  clearTimeout(sheetTimer);
+  sheetTimer = 0;
+  if (!s.errored) {
+    // Our own pause (wantPlay is cleared first), so the video's "pause" event is not mistaken for another app pausing it.
+    s.wantPlay = false;
+    setBusy(s, false);
+    if (s.video) {
+      try {
+        s.video.pause();
+      } catch (err) {
+        /* nothing to pause */
+      }
+    }
+    if (sheetResume) setState(s, "paused");
+  }
+  if (sheetMeta) {
+    sheetMeta.replaceChildren(el("span", "vid-cap-cat", CARD_LABEL[s.item.category]));
+    if (s.item.date) sheetMeta.appendChild(el("span", "vid-cap-date", s.item.date));
+  }
+  if (sheetTitle) sheetTitle.textContent = s.item.title;
+  if (sheetText) {
+    sheetText.textContent = s.item.caption;
+    sheetText.hidden = !s.item.caption;
+  }
+  if (sheetScroll) sheetScroll.scrollTop = 0;
+  sheetPanel.style.transform = "";
+  showControls();
+  viewer.classList.add("has-sheet");
+  setBehindInert(true);
+  sheetEl.hidden = false;
+  void sheetEl.offsetWidth; // lets the slide-up start from below the screen
+  sheetEl.classList.add("is-open");
+  if (sheetCloseBtn) sheetCloseBtn.focus({ preventScroll: true });
+}
+
+// resume: carry on playing if it was playing before. instant: no slide-away (the whole player is closing).
+function closeSheet({ resume = true, instant = false } = {}) {
+  if (!sheetOpen) return;
+  const s = sheetSlide;
+  const wasPlaying = sheetResume;
+  const back = sheetOpener;
+  sheetOpen = false;
+  sheetSlide = null;
+  sheetResume = false;
+  sheetOpener = null;
+  sheetDrag = null;
+  setBehindInert(false);
+  viewer.classList.remove("has-sheet");
+  sheetEl.classList.remove("is-open");
+  const done = () => {
+    sheetTimer = 0;
+    sheetEl.hidden = true;
+    if (sheetPanel) sheetPanel.style.transform = "";
+  };
+  clearTimeout(sheetTimer);
+  if (instant || reducedMotion()) done();
+  else sheetTimer = setTimeout(done, SHEET_MS);
+  // Back to what it was doing: playing carries on from the same spot, paused stays paused.
+  if (resume && wasPlaying && s && s === activeSlide() && viewer.open && !s.errored) playSlide(s);
+  if (viewer.open) (back && back.isConnected ? back : trackEl).focus({ preventScroll: true });
+}
+
+// ----- full screen (where the browser can do it) -----
+function exitFullscreen() {
+  if (!document.fullscreenElement || typeof document.exitFullscreen !== "function") return;
+  try {
+    const done = document.exitFullscreen();
+    if (done && typeof done.catch === "function") done.catch(() => {});
+  } catch (e) {
+    /* already out */
+  }
+}
+
 // ----- opening and closing -----
 function openViewer(item) {
   const list = visibleItems();
@@ -1093,6 +1370,8 @@ function openViewer(item) {
   trackEl.replaceChildren(...slides.map((s) => s.el));
   labelSlides();
   activeIdx = -1;
+  viewer.classList.remove("is-idle", "has-sheet");
+  showControls();
 
   if (!viewer.open) {
     if (typeof viewer.showModal === "function") viewer.showModal();
@@ -1106,17 +1385,24 @@ function openViewer(item) {
 // Stops every download and puts the page back as it was.
 function cleanup() {
   clearTimeout(settleTimer);
+  closeSheet({ resume: false, instant: true });
+  showControls();
   slides.forEach((s) => {
+    s.dead = true;
     setBusy(s, false);
     destroyVideo(s);
-    const cap = s.el.querySelector(".vid-cap");
-    if (cap && typeof cap.releaseStats === "function") cap.releaseStats();
+    if (typeof s.releaseStats === "function") s.releaseStats();
   });
   slides = [];
   activeIdx = -1;
   neighboursOk = false;
   scrubbing = false;
+  overControls = false;
+  wokeByTap = false;
   trackEl.replaceChildren();
+  viewer.classList.remove("is-idle", "has-sheet");
+  viewer.style.removeProperty("--vr");
+  exitFullscreen();
   document.documentElement.classList.remove("vid-open");
 }
 
@@ -1131,6 +1417,11 @@ function closeViewer() {
 
 function wireViewer() {
   viewer.addEventListener("close", cleanup); // Esc key, the close button, or the Android back gesture
+  viewer.addEventListener("cancel", (e) => {
+    if (!sheetOpen) return;
+    e.preventDefault(); // Esc or the back gesture closes the "Read more" sheet first, not the whole player
+    closeSheet();
+  });
   closeBtn.addEventListener("click", closeViewer);
 
   trackEl.addEventListener("scroll", onTrackScroll, { passive: true });
@@ -1155,6 +1446,58 @@ function wireViewer() {
     });
   });
 
+  // The text and controls end just above the playback bar, whatever height it has (one row or two, with or without a gesture
+  // bar under it): its real height is measured and handed to the stylesheet.
+  if (controlsEl && typeof ResizeObserver === "function") {
+    new ResizeObserver(() => {
+      const h = Math.round(controlsEl.getBoundingClientRect().height);
+      if (h > 0) viewer.style.setProperty("--ctl-h", `${h}px`);
+    }).observe(controlsEl);
+  }
+
+  // ----- text and controls that have faded away come back at the visitor's next touch, mouse move or key press -----
+  // The touch is noted before anything else happens: a touch that finds them gone only brings them back (the click handler in
+  // buildSlide checks wokeByTap), so waking the screen never also pauses the video.
+  viewer.addEventListener(
+    "pointerdown",
+    () => {
+      wokeByTap = viewer.classList.contains("is-idle");
+      wake();
+    },
+    true
+  );
+  let lastMove = 0;
+  viewer.addEventListener(
+    "pointermove",
+    (e) => {
+      if (e.pointerType !== "mouse" || Date.now() - lastMove < 250) return;
+      lastMove = Date.now();
+      wake();
+    },
+    { passive: true }
+  );
+  if (controlsEl) {
+    // a mouse resting on the playback bar keeps it on screen (a finger can't "rest": touches are handled above)
+    controlsEl.addEventListener("pointerenter", (e) => {
+      if (e.pointerType !== "mouse") return;
+      overControls = true;
+      showControls();
+    });
+    controlsEl.addEventListener("pointerleave", (e) => {
+      if (e.pointerType !== "mouse") return;
+      overControls = false;
+      armIdle();
+    });
+  }
+
+  // ----- the playback bar -----
+  if (playBtn) {
+    playBtn.addEventListener("click", (e) => {
+      const s = activeSlide();
+      if (s) toggleSlide(s);
+      backToVideo(e);
+    });
+  }
   speedBtn.addEventListener("click", (e) => {
     speedIdx = (speedIdx + 1) % SPEEDS.length;
     slides.forEach((s) => {
@@ -1165,16 +1508,61 @@ function wireViewer() {
   });
   muteBtn.addEventListener("click", (e) => {
     soundOn = !soundOn;
+    if (soundOn && volumeLevel === 0) volumeLevel = 1; // sound back on after the slider was pulled right down
     slides.forEach((s) => {
-      if (s.video) s.video.muted = !soundOn;
+      if (s.video) applyAudio(s.video);
     });
     syncControls();
     backToVideo(e);
   });
+  if (volumeEl) {
+    volumeEl.addEventListener("input", () => {
+      volumeLevel = Number(volumeEl.value) / 100;
+      soundOn = volumeLevel > 0;
+      slides.forEach((s) => {
+        if (s.video) applyAudio(s.video);
+      });
+      syncControls();
+    });
+  }
+  // Full screen: only offered where the browser can do it (an iPhone can't, and there the player already fills the screen).
+  // The page itself goes full screen, not the <dialog>: browsers refuse full screen for a dialog element. The open player
+  // sits in the top layer, so it simply fills the screen on top of the page.
+  if (fsBtn) {
+    const root = document.documentElement;
+    const canFullscreen = !!(document.fullscreenEnabled && typeof root.requestFullscreen === "function");
+    fsBtn.hidden = !canFullscreen;
+    if (canFullscreen) {
+      fsBtn.addEventListener("click", (e) => {
+        if (document.fullscreenElement) {
+          exitFullscreen();
+        } else {
+          try {
+            const asked = root.requestFullscreen();
+            if (asked && typeof asked.catch === "function") asked.catch(() => {});
+          } catch (err) {
+            /* refused: nothing to do */
+          }
+        }
+        backToVideo(e);
+      });
+      document.addEventListener("fullscreenchange", () => {
+        const on = !!document.fullscreenElement;
+        fsBtn.dataset.fs = on ? "1" : "0";
+        fsBtn.setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
+      });
+    }
+  }
 
   // the progress bar: the time follows the finger while dragging, the video jumps when the finger lifts
+  const endScrub = () => {
+    if (!scrubbing) return;
+    scrubbing = false;
+    armIdle(); // the controls may fade away again after the next quiet three seconds
+  };
   seekEl.addEventListener("pointerdown", () => {
     scrubbing = true;
+    showControls();
   });
   seekEl.addEventListener("input", () => {
     const dur = durationOf(activeSlide());
@@ -1184,18 +1572,55 @@ function wireViewer() {
   });
   seekEl.addEventListener("change", () => {
     seekTo();
-    scrubbing = false;
+    endScrub();
   });
-  ["pointerup", "pointercancel", "blur"].forEach((type) =>
-    seekEl.addEventListener(type, () => {
-      scrubbing = false;
-    })
-  );
+  ["pointerup", "pointercancel", "blur"].forEach((type) => seekEl.addEventListener(type, endScrub));
+
+  // ----- the "Read more" sheet -----
+  if (sheetEl && sheetPanel) {
+    if (sheetCloseBtn) sheetCloseBtn.addEventListener("click", () => closeSheet());
+    if (sheetScrim) sheetScrim.addEventListener("click", () => closeSheet());
+    if (sheetScroll) sheetScroll.tabIndex = 0; // so a keyboard can scroll a long description
+    if (sheetHead) {
+      // pull the handle down to close it
+      sheetHead.addEventListener("pointerdown", (e) => {
+        if (!sheetOpen || (e.target.closest && e.target.closest("button"))) return;
+        sheetDrag = { id: e.pointerId, y: e.clientY, dy: 0 };
+        sheetPanel.style.transition = "none"; // follows the finger exactly
+        try {
+          sheetHead.setPointerCapture(e.pointerId);
+        } catch (err) {
+          /* the drag still works without capture, only less forgivingly */
+        }
+      });
+      sheetHead.addEventListener("pointermove", (e) => {
+        if (!sheetDrag || e.pointerId !== sheetDrag.id) return;
+        sheetDrag.dy = Math.max(0, e.clientY - sheetDrag.y);
+        sheetPanel.style.transform = `translateY(${sheetDrag.dy}px)`;
+      });
+      const endDrag = (e) => {
+        if (!sheetDrag || e.pointerId !== sheetDrag.id) return;
+        const far = sheetDrag.dy > 90;
+        sheetDrag = null;
+        sheetPanel.style.transition = ""; // the stylesheet's own slide again
+        if (far) {
+          sheetPanel.style.transform = "translateY(100%)"; // carries on down from where the finger let go
+          closeSheet();
+        } else {
+          sheetPanel.style.transform = ""; // springs back
+        }
+      };
+      sheetHead.addEventListener("pointerup", endDrag);
+      sheetHead.addEventListener("pointercancel", endDrag);
+    }
+  }
 
   viewer.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    wake(); // any key brings the faded text and controls back
+    if (sheetOpen) return; // the sheet is on top: only its own buttons work, and Esc closes it (the "cancel" listener above)
     const onButton = e.target && e.target.closest && e.target.closest("button");
-    const onSeek = e.target === seekEl; // the progress bar uses the arrow keys itself
+    const onSeek = e.target === seekEl || e.target === volumeEl; // the progress bar and the volume slider use the arrow keys themselves
     if (e.key === "ArrowRight" && !onSeek) {
       e.preventDefault();
       step(1);
