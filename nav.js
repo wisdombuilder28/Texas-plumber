@@ -1,6 +1,6 @@
 /* N.D. Flow - site menus. One controller for every page (it used to be copied into script.js and work.js).
    1. The mobile menu (hamburger -> dark card).
-   2. The "Recent Work" choice between Images and Videos: a drop-down under the desktop nav (1280px and up),
+   2. The "Recent Work" choice between Images and Videos: a drop-down under the desktop nav (1440px and up),
       and an expanding group inside the mobile menu. Both are plain disclosure buttons (aria-expanded) over real links.
    const/let only. No innerHTML. */
 (() => {
@@ -142,7 +142,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isOpen()) { setOpen(false); toggle.focus(); }
   });
-  window.matchMedia("(min-width:1280px)").addEventListener("change", (e) => { // same width as the full-header rule in styles.css
+  window.matchMedia("(min-width:1440px)").addEventListener("change", (e) => {
     if (e.matches) setOpen(false);
     setDd(false); // whichever menu is now hidden starts folded again
   });
