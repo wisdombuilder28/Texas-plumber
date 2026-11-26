@@ -147,3 +147,37 @@
     setDd(false); // whichever menu is now hidden starts folded again
   });
 })();
+
+/* Admin shortcut: a small "Admin" button that takes the admin straight to the dashboard.
+   It is only drawn in a browser where an admin is already signed in -- admin/js/admin-hint.js keeps that note in
+   localStorage under "nd_admin_hint" -- so visitors never see it. It grants nothing: the dashboard still checks the
+   real sign-in. Change SHOW_ADMIN_BUTTON to false to switch it off. */
+(() => {
+  const SHOW_ADMIN_BUTTON = true;
+  if (!SHOW_ADMIN_BUTTON || location.pathname.startsWith("/admin")) return;
+
+  let adminHere = false;
+  try { adminHere = localStorage.getItem("nd_admin_hint") === "1"; } catch (e) { /* storage blocked: no button */ }
+  if (!adminHere) return;
+
+  const NS = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(NS, "svg"); // the "layout-dashboard" icon, drawn here so it never waits for the icon library
+  [["viewBox", "0 0 24 24"], ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "2"],
+   ["stroke-linecap", "round"], ["stroke-linejoin", "round"], ["aria-hidden", "true"]]
+    .forEach(([k, v]) => icon.setAttribute(k, v));
+  [[3, 3, 7, 9], [14, 3, 7, 5], [14, 12, 7, 9], [3, 16, 7, 5]].forEach(([x, y, w, h]) => {
+    const r = document.createElementNS(NS, "rect");
+    [["x", x], ["y", y], ["width", w], ["height", h], ["rx", 1]].forEach(([k, v]) => r.setAttribute(k, v));
+    icon.appendChild(r);
+  });
+
+  const chip = document.createElement("a");
+  chip.className = "admin-chip";
+  chip.href = "/admin/dashboard.html";
+  chip.rel = "nofollow";
+  chip.setAttribute("aria-label", "Open the admin dashboard");
+  const label = document.createElement("span");
+  label.textContent = "Admin";
+  chip.append(icon, label);
+  document.body.appendChild(chip);
+})();

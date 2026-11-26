@@ -477,10 +477,43 @@ body.nav-open .contact-fab{visibility:hidden;pointer-events:none;} /* no floatin
 }
 .gallery-more a:hover{color:var(--accent);}
 
-/* Reviews */
+/* Reviews: one row that scrolls sideways. Phones show one card with the next one peeking in (the hint to swipe),
+   tablets two cards, desktops three. The browser does the scrolling and snapping; script.js draws the arrows and dots. */
 .reviews{background:var(--surface-soft);}
-.reviews-grid{margin-top:3rem;display:grid;gap:1.25rem;}
-@media(min-width:768px){.reviews-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.reviews-slider{margin-top:2.5rem;--edge:1.25rem;--gap:1.25rem;}
+.reviews-grid{
+  position:relative;display:flex;align-items:stretch;gap:var(--gap);
+  overflow-x:auto;overflow-y:hidden;
+  margin-inline:calc(var(--edge) * -1);            /* runs out to the screen edge, so the next card can peek in */
+  padding:.5rem var(--edge) 1.75rem;               /* room for the card shadow and the hover lift (overflow would clip them) */
+  scroll-snap-type:x mandatory;scroll-padding-inline:var(--edge);
+  overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+  /* the outer 20px fades out, so a card sliding off (or its shadow, when the next one starts right at the edge) never shows as a stray line */
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--edge),#000 calc(100% - var(--edge)),transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#000 var(--edge),#000 calc(100% - var(--edge)),transparent 100%);
+}
+.reviews-grid::-webkit-scrollbar{display:none;}
+.reviews-grid:focus-visible{outline:2px solid var(--brand-gold);outline-offset:-2px;border-radius:.75rem;}
+.reviews-grid .review{flex:0 0 min(86%,26rem);scroll-snap-align:start;display:flex;flex-direction:column;}
+.reviews-grid .review blockquote{flex:1 1 auto;}
+@media(min-width:640px){.reviews-grid .review{flex-basis:calc((100% - var(--gap)) / 2);}}
+@media(min-width:1024px){.reviews-grid .review{flex-basis:calc((100% - var(--gap) * 2) / 3);}}
+.reviews-controls{display:flex;align-items:center;justify-content:center;gap:.75rem;}
+.reviews-controls[hidden]{display:none;}
+.reviews-arrow{
+  display:grid;place-items:center;flex:none;width:2.75rem;height:2.75rem;border-radius:9999px;
+  border:1px solid var(--border);background:var(--card);color:var(--primary);
+  box-shadow:0 1px 2px oklch(0.1 0.006 260 / .07);
+  transition:background .18s ease,color .18s ease,border-color .18s ease,opacity .18s ease;
+}
+.reviews-arrow:hover:not(:disabled){background:var(--brand-black);border-color:var(--brand-black);color:#fff;}
+.reviews-arrow:disabled{opacity:.35;cursor:default;}
+.reviews-arrow:focus-visible,.reviews-dot:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
+.reviews-dots{display:flex;align-items:center;}
+.reviews-dot{display:grid;place-items:center;width:1.5rem;height:2.75rem;} /* small dot, comfortable tap area */
+.reviews-dot::before{content:"";width:.5rem;height:.5rem;border-radius:9999px;background:oklch(0.82 0.006 260);transition:width .25s ease,background .25s ease;}
+.reviews-dot[aria-current="true"]::before{width:1.35rem;background:var(--brand-gold);}
 .review{border:1px solid var(--border);background:var(--card);border-radius:.75rem;padding:1.5rem;box-shadow:var(--shadow-card);}
 .stars{display:flex;gap:2px;color:var(--accent);}
 .stars svg{fill:currentColor;}
@@ -638,6 +671,24 @@ body.nav-open .contact-fab{visibility:hidden;pointer-events:none;} /* no floatin
   opacity: 1;
   text-decoration: underline;
 }
+
+/* Admin shortcut: a small pill, bottom-left (the contact button is bottom-right). nav.js only draws it in a browser where
+   an admin is already signed in, so visitors never see it. */
+.admin-chip{
+  position:fixed;left:1.1rem;bottom:1.1rem;z-index:90;
+  display:inline-flex;align-items:center;gap:.45rem;
+  padding:.65rem 1rem .65rem .85rem;border-radius:9999px;
+  background:var(--brand-black);color:#fff;border:1px solid oklch(0.75 0.135 82 / .55);
+  font-size:calc(.82rem * var(--ts));font-weight:700;letter-spacing:.01em;line-height:1;
+  box-shadow:0 14px 30px -10px oklch(0.1 0.006 260 / .55);
+  animation:fabIn .75s .8s cubic-bezier(.22,1,.36,1) backwards;
+  transition:background .18s ease,transform .18s ease;
+}
+.admin-chip svg{width:1rem;height:1rem;flex:none;color:var(--brand-gold);}
+.admin-chip:hover{background:var(--brand-black-soft);transform:translateY(-2px);}
+.admin-chip:focus-visible{outline:2px solid var(--brand-gold);outline-offset:2px;}
+body.nav-open .admin-chip{visibility:hidden;pointer-events:none;} /* nothing floating over the open menu */
+@media(prefers-reduced-motion:reduce){.admin-chip{animation:none;transition:none;}}
 
 /* Recent Work page */
 .work-list{display:grid;gap:1rem;margin-top:1.25rem;}
@@ -815,7 +866,6 @@ html.js-motion .hero-card{
    .motion-play once an element scrolls into view. */
 html.js-motion .service-card,
 html.js-motion .why-item,
-html.js-motion .review,
 html.js-motion .work-item,
 html.js-motion .gallery-fig,
 html.js-motion .areas-list li,
@@ -829,6 +879,9 @@ html.js-motion .contact-form{
 .motion-play{
   animation:fadeUp .95s cubic-bezier(.22,1,.36,1) both;
 }
+/* Review cards sit in a sideways-scrolling row (see "Reviews"): they are never hidden up front, and they must not
+   replay the fade-up when motion.js reaches them (it would blink them out and back in). */
+.reviews-grid .review.motion-play{animation:none;}
 
 .emergency .btn-accent{animation:goldPulse 2.4s ease-in-out infinite;}
 

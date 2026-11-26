@@ -1,0 +1,39 @@
+{
+  "id": "/admin/",
+  "name": "N.D. Flow Admin",
+  "short_name": "ND Admin",
+  "description": "Manage the N.D. Flow Plumbing Co. website: visitor numbers, photos and videos.",
+  "start_url": "/admin/dashboard.html?source=app",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/assets/admin-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Upload videos",
+      "short_name": "Videos",
+      "url": "/admin/videos.html",
+      "icons": [{ "src": "/assets/admin-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Upload photos",
+      "short_name": "Photos",
+      "url": "/admin/gallery.html",
+      "icons": [{ "src": "/assets/admin-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Visitor numbers",
+      "short_name": "Analytics",
+      "url": "/admin/dashboard.html",
+      "icons": [{ "src": "/assets/admin-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

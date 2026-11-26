@@ -94,6 +94,83 @@ if (reviewsGrid) {
       </figcaption>
     </figure>
   `).join("");
+  setupReviewsSlider(reviewsGrid, document.getElementById("reviews-controls"));
+}
+
+/* Reviews slider.
+   The cards sit in one row that scrolls sideways: swipe on a phone, trackpad or Shift+wheel on a laptop,
+   left/right arrow keys once the row is focused. The browser does the scrolling and the snapping (see
+   .reviews-grid in styles.css). This function only draws the arrow buttons and dots under the row and keeps
+   them in step with where the row is. If it never runs, the row still scrolls and snaps on its own. */
+function setupReviewsSlider(track, controls) {
+  const cards = Array.from(track.children);
+  if (!controls || cards.length < 2) return;
+
+  const arrow = (dir, label, path) => `
+    <button type="button" class="reviews-arrow" data-dir="${dir}" aria-label="${label}">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>
+    </button>`;
+  controls.innerHTML =
+    arrow(-1, "Previous review", "m15 18-6-6 6-6") +
+    '<div class="reviews-dots"></div>' +
+    arrow(1, "Next review", "m9 18 6-6-6-6");
+  const prev = controls.querySelector('[data-dir="-1"]');
+  const next = controls.querySelector('[data-dir="1"]');
+  const dotsBox = controls.querySelector(".reviews-dots");
+
+  let stops = [0]; // scrollLeft of every place the row can come to rest
+  let at = 0;      // the stop we are closest to right now
+  let dots = [];
+
+  const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function go(i) {
+    const target = stops[Math.max(0, Math.min(stops.length - 1, i))];
+    track.scrollTo({ left: target, behavior: reduceMotion() ? "auto" : "smooth" });
+  }
+
+  function update() {
+    const x = track.scrollLeft;
+    at = 0;
+    stops.forEach((s, i) => { if (Math.abs(s - x) < Math.abs(stops[at] - x)) at = i; });
+    dots.forEach((d, i) => (i === at ? d.setAttribute("aria-current", "true") : d.removeAttribute("aria-current")));
+    prev.disabled = x <= 2;
+    next.disabled = x >= stops[stops.length - 1] - 2;
+  }
+
+  // Works out where the row can rest at the current screen width: every card whose left edge the row can reach,
+  // plus the very end. (One card per view on a phone, two on a tablet, three on a desktop -> a different number of dots.)
+  function measure() {
+    const max = Math.max(0, track.scrollWidth - track.clientWidth);
+    const first = cards[0].offsetLeft;
+    stops = [];
+    cards.forEach((c) => {
+      const x = c.offsetLeft - first;
+      if (x <= max + 2) stops.push(Math.min(x, max));
+    });
+    if (stops[stops.length - 1] < max - 2) stops.push(max);
+    controls.hidden = stops.length < 2; // everything fits on screen: no arrows needed
+    dotsBox.innerHTML = stops
+      .map((_, i) => `<button type="button" class="reviews-dot" aria-label="Go to ${i + 1} of ${stops.length}"></button>`)
+      .join("");
+    dots = Array.from(dotsBox.children);
+    dots.forEach((d, i) => d.addEventListener("click", () => go(i)));
+    update();
+  }
+
+  prev.addEventListener("click", () => go(at - 1));
+  next.addEventListener("click", () => go(at + 1));
+
+  let queued = false;
+  track.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; update(); });
+  }, { passive: true });
+
+  if ("ResizeObserver" in window) new ResizeObserver(measure).observe(track);
+  else window.addEventListener("resize", measure);
+  measure();
 }
 
 // Who we serve
